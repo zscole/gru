@@ -21,6 +21,11 @@ class Config:
     telegram_token: str = ""
     telegram_admin_ids: list[int] = field(default_factory=list)
 
+    # Discord
+    discord_token: str = ""
+    discord_admin_ids: list[int] = field(default_factory=list)
+    discord_guild_id: int | None = None  # Optional: restrict to specific server
+
     # Anthropic
     anthropic_api_key: str = ""
     default_model: str = "claude-sonnet-4-20250514"
@@ -71,6 +76,13 @@ class Config:
         admin_ids_raw = os.getenv("GRU_ADMIN_IDS", "")
         admin_ids = [int(x.strip()) for x in admin_ids_raw.split(",") if x.strip()]
 
+        discord_admin_ids_raw = os.getenv("GRU_DISCORD_ADMIN_IDS", "")
+        discord_admin_ids = [int(x.strip()) for x in discord_admin_ids_raw.split(",") if x.strip()]
+
+        discord_guild_id = None
+        if guild_id_str := os.getenv("GRU_DISCORD_GUILD_ID"):
+            discord_guild_id = int(guild_id_str)
+
         data_dir = Path(os.getenv("GRU_DATA_DIR", str(Path.home() / ".gru")))
         workdir = Path(os.getenv("GRU_WORKDIR", str(Path.home() / "gru-workspace")))
 
@@ -78,6 +90,9 @@ class Config:
             data_dir=data_dir,
             telegram_token=os.getenv("GRU_TELEGRAM_TOKEN", ""),
             telegram_admin_ids=admin_ids,
+            discord_token=os.getenv("GRU_DISCORD_TOKEN", ""),
+            discord_admin_ids=discord_admin_ids,
+            discord_guild_id=discord_guild_id,
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             default_model=os.getenv("GRU_DEFAULT_MODEL", "claude-sonnet-4-20250514"),
             max_tokens=int(os.getenv("GRU_MAX_TOKENS", "8192")),
@@ -95,10 +110,29 @@ class Config:
     def validate(self) -> list[str]:
         """Validate configuration, return list of errors."""
         errors = []
-        if not self.telegram_token:
-            errors.append("GRU_TELEGRAM_TOKEN is required")
-        if not self.telegram_admin_ids:
-            errors.append("GRU_ADMIN_IDS is required (comma-separated Telegram user IDs)")
+
+        # At least one bot interface required
+        has_telegram = self.telegram_token and self.telegram_admin_ids
+        has_discord = self.discord_token and self.discord_admin_ids
+
+        if not has_telegram and not has_discord:
+            errors.append(
+                "At least one bot interface required: "
+                "set GRU_TELEGRAM_TOKEN + GRU_ADMIN_IDS or "
+                "GRU_DISCORD_TOKEN + GRU_DISCORD_ADMIN_IDS"
+            )
+
+        # Validate partial configs
+        if self.telegram_token and not self.telegram_admin_ids:
+            errors.append("GRU_ADMIN_IDS required when using Telegram")
+        if self.telegram_admin_ids and not self.telegram_token:
+            errors.append("GRU_TELEGRAM_TOKEN required when using Telegram")
+        if self.discord_token and not self.discord_admin_ids:
+            errors.append("GRU_DISCORD_ADMIN_IDS required when using Discord")
+        if self.discord_admin_ids and not self.discord_token:
+            errors.append("GRU_DISCORD_TOKEN required when using Discord")
+
         if not self.anthropic_api_key:
             errors.append("ANTHROPIC_API_KEY is required")
+
         return errors
