@@ -198,6 +198,7 @@ async def test_get_status(scheduler):
 @pytest.mark.asyncio
 async def test_concurrent_enqueue(scheduler):
     """Test concurrent enqueue operations."""
+
     async def enqueue_task(task_id):
         await scheduler.enqueue(task_id, f"agent_{task_id}", "normal")
 

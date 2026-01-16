@@ -391,6 +391,7 @@ async def test_empty_text_content(client):
 @pytest.mark.asyncio
 async def test_retry_success_first_try():
     """Test retry succeeds on first attempt."""
+
     async def success_func():
         return "success"
 
@@ -470,6 +471,7 @@ async def test_retry_non_retryable_exception():
 @pytest.mark.asyncio
 async def test_retry_with_arguments():
     """Test retry passes arguments correctly."""
+
     async def func_with_args(a, b, c=None):
         return f"{a}-{b}-{c}"
 

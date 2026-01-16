@@ -130,7 +130,6 @@ class Scheduler:
                 "max_concurrent": self.max_concurrent,
                 "running_tasks": list(self._running.keys()),
                 "queued_tasks": [
-                    {"task_id": t.task_id, "agent_id": t.agent_id, "wait_cycles": t.wait_cycles}
-                    for t in self._queue
+                    {"task_id": t.task_id, "agent_id": t.agent_id, "wait_cycles": t.wait_cycles} for t in self._queue
                 ],
             }

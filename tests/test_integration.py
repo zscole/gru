@@ -81,9 +81,7 @@ async def test_agent_spawn_and_complete(setup):
         usage={"input_tokens": 10, "output_tokens": 5},
     )
 
-    with patch.object(
-        orchestrator.claude, "send_message", new_callable=AsyncMock, return_value=mock_response
-    ):
+    with patch.object(orchestrator.claude, "send_message", new_callable=AsyncMock, return_value=mock_response):
         agent_data = await orchestrator.spawn_agent(
             task="Test task",
             supervised=False,
@@ -208,16 +206,12 @@ async def test_agent_turn_limit(setup):
 
     tool_response = Response(
         content="Continuing...",
-        tool_uses=[
-            ToolUse(id="tool_1", name="bash", input={"command": "echo test"})
-        ],
+        tool_uses=[ToolUse(id="tool_1", name="bash", input={"command": "echo test"})],
         stop_reason="tool_use",
         usage={"input_tokens": 10, "output_tokens": 20},
     )
 
-    with patch.object(
-        orchestrator.claude, "send_message", new_callable=AsyncMock, return_value=tool_response
-    ):
+    with patch.object(orchestrator.claude, "send_message", new_callable=AsyncMock, return_value=tool_response):
         agent_data = await orchestrator.spawn_agent(
             task="Infinite loop task",
             supervised=False,
@@ -304,9 +298,7 @@ async def test_multiple_agents(setup):
         usage={"input_tokens": 10, "output_tokens": 5},
     )
 
-    with patch.object(
-        orchestrator.claude, "send_message", new_callable=AsyncMock, return_value=mock_response
-    ):
+    with patch.object(orchestrator.claude, "send_message", new_callable=AsyncMock, return_value=mock_response):
         agents = []
         for i in range(3):
             agent_data = await orchestrator.spawn_agent(
@@ -338,9 +330,7 @@ async def test_read_file_tool(setup):
 
     tool_response = Response(
         content="Reading file.",
-        tool_uses=[
-            ToolUse(id="tool_1", name="read_file", input={"path": "readable.txt"})
-        ],
+        tool_uses=[ToolUse(id="tool_1", name="read_file", input={"path": "readable.txt"})],
         stop_reason="tool_use",
         usage={"input_tokens": 10, "output_tokens": 20},
     )

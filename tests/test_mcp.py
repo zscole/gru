@@ -185,24 +185,28 @@ class TestMCPClientServerLifecycle:
         """Test successfully starting a server."""
         server = MCPServer(name="test", command="echo", args=["hello"])
 
-        init_response = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {"protocolVersion": "2024-11-05"},
-        })
-        tools_response = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "result": {
-                "tools": [
-                    {
-                        "name": "test_tool",
-                        "description": "A test tool",
-                        "inputSchema": {"type": "object", "properties": {}},
-                    }
-                ]
-            },
-        })
+        init_response = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {"protocolVersion": "2024-11-05"},
+            }
+        )
+        tools_response = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": {
+                    "tools": [
+                        {
+                            "name": "test_tool",
+                            "description": "A test tool",
+                            "inputSchema": {"type": "object", "properties": {}},
+                        }
+                    ]
+                },
+            }
+        )
         mock_process.stdout.readline.side_effect = [init_response, tools_response]
 
         client = MCPClient()
@@ -281,19 +285,25 @@ class TestMCPClientServerLifecycle:
     @pytest.mark.asyncio
     async def test_start_all(self, mock_process):
         """Test starting all servers."""
-        init_response = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {"protocolVersion": "2024-11-05"},
-        })
-        tools_response = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "result": {"tools": []},
-        })
+        init_response = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {"protocolVersion": "2024-11-05"},
+            }
+        )
+        tools_response = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": {"tools": []},
+            }
+        )
         mock_process.stdout.readline.side_effect = [
-            init_response, tools_response,
-            init_response, tools_response,
+            init_response,
+            tools_response,
+            init_response,
+            tools_response,
         ]
 
         client = MCPClient()
@@ -348,15 +358,13 @@ class TestMCPClientToolCalls:
     @pytest.mark.asyncio
     async def test_call_tool_success(self, mock_process):
         """Test successfully calling a tool."""
-        response = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {
-                "content": [
-                    {"type": "text", "text": "Tool output"}
-                ]
-            },
-        })
+        response = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {"content": [{"type": "text", "text": "Tool output"}]},
+            }
+        )
         mock_process.stdout.readline.return_value = response
 
         server = MCPServer(name="test", command="echo")
@@ -372,16 +380,18 @@ class TestMCPClientToolCalls:
     @pytest.mark.asyncio
     async def test_call_tool_multiple_text_blocks(self, mock_process):
         """Test tool response with multiple text blocks."""
-        response = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {
-                "content": [
-                    {"type": "text", "text": "Line 1"},
-                    {"type": "text", "text": "Line 2"},
-                ]
-            },
-        })
+        response = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "content": [
+                        {"type": "text", "text": "Line 1"},
+                        {"type": "text", "text": "Line 2"},
+                    ]
+                },
+            }
+        )
         mock_process.stdout.readline.return_value = response
 
         server = MCPServer(name="test", command="echo")
@@ -472,11 +482,13 @@ class TestMCPClientRequests:
     @pytest.mark.asyncio
     async def test_send_request_error_response(self, mock_process):
         """Test handling error response."""
-        response = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "error": {"code": -32600, "message": "Invalid request"},
-        })
+        response = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {"code": -32600, "message": "Invalid request"},
+            }
+        )
         mock_process.stdout.readline.return_value = response
 
         server = MCPServer(name="test", command="echo")
@@ -592,16 +604,20 @@ class TestMCPHealthCheck:
         from gru.claude import ToolDefinition
 
         # Set up initial response for new server start
-        init_response = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {"protocolVersion": "2024-11-05"},
-        })
-        tools_response = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "result": {"tools": []},
-        })
+        init_response = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {"protocolVersion": "2024-11-05"},
+            }
+        )
+        tools_response = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": {"tools": []},
+            }
+        )
         mock_process.stdout.readline.side_effect = [init_response, tools_response]
 
         # Create server with existing tool
@@ -643,16 +659,20 @@ class TestMCPHealthCheck:
     @pytest.mark.asyncio
     async def test_recover_unhealthy_restarts(self, mock_process):
         """Test recovery restarts unhealthy servers."""
-        init_response = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {"protocolVersion": "2024-11-05"},
-        })
-        tools_response = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "result": {"tools": []},
-        })
+        init_response = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {"protocolVersion": "2024-11-05"},
+            }
+        )
+        tools_response = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": {"tools": []},
+            }
+        )
         mock_process.stdout.readline.side_effect = [init_response, tools_response]
 
         # Unhealthy server

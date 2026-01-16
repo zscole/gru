@@ -30,11 +30,13 @@ def orchestrator():
     mock.spawn_agent = AsyncMock(return_value={"id": "agent1", "workdir": "/test/workdir"})
     mock.get_agent = AsyncMock(return_value=None)
     mock.list_agents = AsyncMock(return_value=[])
-    mock.get_status = AsyncMock(return_value={
-        "running": True,
-        "agents": {"total": 5, "running": 2, "paused": 1},
-        "scheduler": {"queued": 3},
-    })
+    mock.get_status = AsyncMock(
+        return_value={
+            "running": True,
+            "agents": {"total": 5, "running": 2, "paused": 1},
+            "scheduler": {"queued": 3},
+        }
+    )
     mock.get_pending_approvals = AsyncMock(return_value=[])
     mock.pause_agent = AsyncMock(return_value=True)
     mock.resume_agent = AsyncMock(return_value=True)
@@ -814,10 +816,7 @@ class TestApprovalCallback:
         bot._app.bot.send_message = AsyncMock()
 
         options = ["Option A", "Option B", "Option C"]
-        future = bot.approval_callback(
-            "approval1",
-            {"question": "Which option?", "options": options}
-        )
+        future = bot.approval_callback("approval1", {"question": "Which option?", "options": options})
 
         assert "approval1" in bot._pending_approvals
         assert isinstance(future, asyncio.Future)

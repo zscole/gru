@@ -86,14 +86,15 @@ class MCPClient:
             )
 
             # Initialize connection
-            init_response = await self._send_request(server, "initialize", {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {
-                    "name": "gru",
-                    "version": "1.0.0"
-                }
-            })
+            init_response = await self._send_request(
+                server,
+                "initialize",
+                {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "gru", "version": "1.0.0"},
+                },
+            )
 
             if not init_response:
                 return False
@@ -145,9 +146,7 @@ class MCPClient:
         for server in self.servers.values():
             await self.stop_server(server)
 
-    async def _send_request(
-        self, server: MCPServer, method: str, params: dict
-    ) -> dict | None:
+    async def _send_request(self, server: MCPServer, method: str, params: dict) -> dict | None:
         """Send a JSON-RPC request to an MCP server."""
         if not server.process or not server.process.stdin or not server.process.stdout:
             return None
@@ -190,9 +189,7 @@ class MCPClient:
                 logger.error(f"MCP request error: {e}")
                 return None
 
-    async def _send_notification(
-        self, server: MCPServer, method: str, params: dict
-    ) -> None:
+    async def _send_notification(self, server: MCPServer, method: str, params: dict) -> None:
         """Send a JSON-RPC notification (no response expected)."""
         if not server.process or not server.process.stdin:
             return
@@ -224,10 +221,14 @@ class MCPClient:
         # Extract original tool name (remove server prefix)
         original_name = tool_name.split("__", 1)[1] if "__" in tool_name else tool_name
 
-        response = await self._send_request(server, "tools/call", {
-            "name": original_name,
-            "arguments": arguments,
-        })
+        response = await self._send_request(
+            server,
+            "tools/call",
+            {
+                "name": original_name,
+                "arguments": arguments,
+            },
+        )
 
         if not response:
             return "MCP tool call failed"

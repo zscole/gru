@@ -109,15 +109,11 @@ class Orchestrator:
         """Set callback for notifications."""
         self._notify_callback = callback
 
-    def set_approval_callback(
-        self, callback: Callable[[str, dict], asyncio.Future]
-    ) -> None:
+    def set_approval_callback(self, callback: Callable[[str, dict], asyncio.Future]) -> None:
         """Set callback for approval requests."""
         self._approval_callback = callback
 
-    def set_cancel_approval_callback(
-        self, callback: Callable[[str], Any]
-    ) -> None:
+    def set_cancel_approval_callback(self, callback: Callable[[str], Any]) -> None:
         """Set callback for cancelling approval requests on timeout."""
         self._cancel_approval_callback = callback
 
@@ -129,10 +125,12 @@ class Orchestrator:
         # Keep first message (task) and recent messages
         keep_recent = max_messages - 1
         truncated = [messages[0]]
-        truncated.append({
-            "role": "user",
-            "content": f"[Earlier conversation truncated. {len(messages) - max_messages} messages removed.]",
-        })
+        truncated.append(
+            {
+                "role": "user",
+                "content": f"[Earlier conversation truncated. {len(messages) - max_messages} messages removed.]",
+            }
+        )
         truncated.extend(messages[-keep_recent:])
         return truncated
 
@@ -214,9 +212,7 @@ class Orchestrator:
         """Get agent by ID."""
         return await self.db.get_agent(agent_id)
 
-    async def list_agents(
-        self, status: str | None = None
-    ) -> list[dict[str, Any]]:
+    async def list_agents(self, status: str | None = None) -> list[dict[str, Any]]:
         """List agents."""
         return await self.db.get_agents(status)
 
@@ -284,25 +280,23 @@ class Orchestrator:
             while not agent.is_cancelled:
                 # Check runtime limit
                 if agent.runtime_seconds > self.config.max_agent_runtime:
-                    raise TimeoutError(
-                        f"Agent exceeded max runtime of {self.config.max_agent_runtime}s"
-                    )
+                    raise TimeoutError(f"Agent exceeded max runtime of {self.config.max_agent_runtime}s")
 
                 # Check turn limit
                 if agent.turn_count >= self.config.max_agent_turns:
-                    raise RuntimeError(
-                        f"Agent exceeded max turns of {self.config.max_agent_turns}"
-                    )
+                    raise RuntimeError(f"Agent exceeded max turns of {self.config.max_agent_turns}")
 
                 agent.increment_turn()
 
                 # Check for incoming messages from other agents
                 incoming = await self.coordinator.get_messages(agent.id, unread_only=True)
                 for msg in incoming:
-                    agent.messages.append({
-                        "role": "user",
-                        "content": f"[Message from agent {msg['from_agent']}]: {msg['content']}",
-                    })
+                    agent.messages.append(
+                        {
+                            "role": "user",
+                            "content": f"[Message from agent {msg['from_agent']}]: {msg['content']}",
+                        }
+                    )
                     await self.coordinator.mark_read(msg["id"])
 
                 # Truncate conversation if needed to prevent memory issues
@@ -342,23 +336,27 @@ class Orchestrator:
                     if response.content:
                         assistant_content.append({"type": "text", "text": response.content})
                     for tu in response.tool_uses:
-                        assistant_content.append({
-                            "type": "tool_use",
-                            "id": tu.id,
-                            "name": tu.name,
-                            "input": tu.input,
-                        })
+                        assistant_content.append(
+                            {
+                                "type": "tool_use",
+                                "id": tu.id,
+                                "name": tu.name,
+                                "input": tu.input,
+                            }
+                        )
                     agent.messages.append({"role": "assistant", "content": assistant_content})
 
                     # Add tool results
                     tool_result_content = []
                     for tr in tool_results:
-                        tool_result_content.append({
-                            "type": "tool_result",
-                            "tool_use_id": tr.tool_use_id,
-                            "content": tr.content,
-                            "is_error": tr.is_error,
-                        })
+                        tool_result_content.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tr.tool_use_id,
+                                "content": tr.content,
+                                "is_error": tr.is_error,
+                            }
+                        )
                     agent.messages.append({"role": "user", "content": tool_result_content})
                 else:
                     agent.messages.append({"role": "assistant", "content": response.content})
@@ -399,45 +397,45 @@ class Orchestrator:
             self._agents.pop(agent.id, None)
             self.scheduler.unregister_running(task_id)
 
-    async def _handle_tool_uses(
-        self, agent: Agent, response: Response, task_id: str
-    ) -> list[ToolResult]:
+    async def _handle_tool_uses(self, agent: Agent, response: Response, task_id: str) -> list[ToolResult]:
         """Handle tool use requests from Claude."""
         results = []
 
         for tool_use in response.tool_uses:
             # Check if approval needed
             if agent.supervised and tool_use.name in ("bash", "write_file"):
-                approved = await self._request_approval(
-                    agent, tool_use.name, tool_use.input, task_id
-                )
+                approved = await self._request_approval(agent, tool_use.name, tool_use.input, task_id)
                 if not approved:
-                    results.append(ToolResult(
-                        tool_use_id=tool_use.id,
-                        content="Action rejected by user",
-                        is_error=True,
-                    ))
+                    results.append(
+                        ToolResult(
+                            tool_use_id=tool_use.id,
+                            content="Action rejected by user",
+                            is_error=True,
+                        )
+                    )
                     continue
 
             # Execute tool
             try:
                 result = await self._execute_tool(agent, tool_use.name, tool_use.input, task_id)
-                results.append(ToolResult(
-                    tool_use_id=tool_use.id,
-                    content=result,
-                ))
+                results.append(
+                    ToolResult(
+                        tool_use_id=tool_use.id,
+                        content=result,
+                    )
+                )
             except Exception as e:
-                results.append(ToolResult(
-                    tool_use_id=tool_use.id,
-                    content=str(e),
-                    is_error=True,
-                ))
+                results.append(
+                    ToolResult(
+                        tool_use_id=tool_use.id,
+                        content=str(e),
+                        is_error=True,
+                    )
+                )
 
         return results
 
-    async def _request_approval(
-        self, agent: Agent, action: str, details: dict, task_id: str
-    ) -> bool:
+    async def _request_approval(self, agent: Agent, action: str, details: dict, task_id: str) -> bool:
         """Request approval for an action."""
         if not self._approval_callback:
             return True  # Auto-approve if no callback
@@ -482,9 +480,7 @@ class Orchestrator:
             else:  # block
                 return False
 
-    async def _execute_tool(
-        self, agent: Agent, tool_name: str, tool_input: dict, task_id: str
-    ) -> str:
+    async def _execute_tool(self, agent: Agent, tool_name: str, tool_input: dict, task_id: str) -> str:
         """Execute a tool and return the result."""
         # Check if it's an MCP tool first
         if self.mcp.is_mcp_tool(tool_name):
@@ -492,12 +488,8 @@ class Orchestrator:
 
         # Built-in tool dispatch
         handlers = {
-            "bash": lambda: self._execute_bash(
-                tool_input.get("command", ""), agent.workdir
-            ),
-            "read_file": lambda: self._read_file(
-                tool_input.get("path", ""), agent.workdir
-            ),
+            "bash": lambda: self._execute_bash(tool_input.get("command", ""), agent.workdir),
+            "read_file": lambda: self._read_file(tool_input.get("path", ""), agent.workdir),
             "write_file": lambda: self._write_file(
                 tool_input.get("path", ""),
                 tool_input.get("content", ""),
@@ -520,9 +512,7 @@ class Orchestrator:
                 tool_input.get("message_type", "info"),
                 task_id,
             ),
-            "get_shared_context": lambda: self._get_context(
-                task_id, tool_input.get("key")
-            ),
+            "get_shared_context": lambda: self._get_context(task_id, tool_input.get("key")),
             "set_shared_context": lambda: self._set_context(
                 agent,
                 task_id,
@@ -601,9 +591,7 @@ class Orchestrator:
         except Exception as e:
             return f"Error searching files: {e}"
 
-    async def _request_human_input(
-        self, agent: Agent, question: str, options: list[str] | None
-    ) -> str:
+    async def _request_human_input(self, agent: Agent, question: str, options: list[str] | None) -> str:
         """Request human input via approval callback."""
         if not self._approval_callback:
             return "No human input mechanism available. Proceeding without input."
@@ -675,9 +663,7 @@ class Orchestrator:
         context = await self.coordinator.get_context(task_id, key)
         return json.dumps(context)
 
-    async def _set_context(
-        self, agent: Agent, task_id: str, key: str, value: str
-    ) -> str:
+    async def _set_context(self, agent: Agent, task_id: str, key: str, value: str) -> str:
         """Set shared context."""
         await self.coordinator.set_context(task_id, key, value, agent.id)
         return f"Context set: {key}"
@@ -703,9 +689,7 @@ class Orchestrator:
                         continue
 
                     # Start agent task
-                    task = asyncio.create_task(
-                        self.run_agent(agent, queued.task_id)
-                    )
+                    task = asyncio.create_task(self.run_agent(agent, queued.task_id))
                     self.scheduler.register_running(queued.task_id, task)
 
                 # Small delay

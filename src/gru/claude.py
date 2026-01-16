@@ -102,14 +102,13 @@ async def retry_with_backoff(
                 raise
 
             # Calculate delay with exponential backoff and jitter
-            delay = min(base_delay * (2 ** attempt), max_delay)
+            delay = min(base_delay * (2**attempt), max_delay)
             # Add jitter (0-25% of delay) to prevent thundering herd
             jitter = delay * 0.25 * random.random()
             delay = delay + jitter
 
             logger.warning(
-                f"Claude API call failed (attempt {attempt + 1}/{max_retries + 1}): {e}. "
-                f"Retrying in {delay:.1f}s..."
+                f"Claude API call failed (attempt {attempt + 1}/{max_retries + 1}): {e}. Retrying in {delay:.1f}s..."
             )
             await asyncio.sleep(delay)
 
@@ -231,12 +230,14 @@ class ClaudeClient:
         # Add tool results to messages
         tool_result_content = []
         for result in tool_results:
-            tool_result_content.append({
-                "type": "tool_result",
-                "tool_use_id": result.tool_use_id,
-                "content": result.content,
-                "is_error": result.is_error,
-            })
+            tool_result_content.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": result.tool_use_id,
+                    "content": result.content,
+                    "is_error": result.is_error,
+                }
+            )
 
         messages = messages + [{"role": "user", "content": tool_result_content}]
 

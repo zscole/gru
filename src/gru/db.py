@@ -57,33 +57,25 @@ class Database:
             await self._conn.rollback()
             raise
 
-    async def execute(
-        self, sql: str, params: tuple[Any, ...] | dict[str, Any] = ()
-    ) -> aiosqlite.Cursor:
+    async def execute(self, sql: str, params: tuple[Any, ...] | dict[str, Any] = ()) -> aiosqlite.Cursor:
         """Execute a SQL statement."""
         if not self._conn:
             raise RuntimeError("Database not connected")
         return await self._conn.execute(sql, params)
 
-    async def executemany(
-        self, sql: str, params_seq: list[tuple[Any, ...]]
-    ) -> aiosqlite.Cursor:
+    async def executemany(self, sql: str, params_seq: list[tuple[Any, ...]]) -> aiosqlite.Cursor:
         """Execute a SQL statement with multiple parameter sets."""
         if not self._conn:
             raise RuntimeError("Database not connected")
         return await self._conn.executemany(sql, params_seq)
 
-    async def fetchone(
-        self, sql: str, params: tuple[Any, ...] | dict[str, Any] = ()
-    ) -> dict[str, Any] | None:
+    async def fetchone(self, sql: str, params: tuple[Any, ...] | dict[str, Any] = ()) -> dict[str, Any] | None:
         """Execute and fetch one row as dict."""
         cursor = await self.execute(sql, params)
         row = await cursor.fetchone()
         return dict(row) if row else None
 
-    async def fetchall(
-        self, sql: str, params: tuple[Any, ...] | dict[str, Any] = ()
-    ) -> list[dict[str, Any]]:
+    async def fetchall(self, sql: str, params: tuple[Any, ...] | dict[str, Any] = ()) -> list[dict[str, Any]]:
         """Execute and fetch all rows as dicts."""
         cursor = await self.execute(sql, params)
         rows = await cursor.fetchall()
@@ -137,18 +129,14 @@ class Database:
         """Get agent by ID."""
         return await self.fetchone("SELECT * FROM agents WHERE id = ?", (agent_id,))
 
-    async def get_agents(
-        self, status: str | None = None, limit: int = 100
-    ) -> list[dict[str, Any]]:
+    async def get_agents(self, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         """Get agents, optionally filtered by status."""
         if status:
             return await self.fetchall(
                 "SELECT * FROM agents WHERE status = ? ORDER BY created_at DESC LIMIT ?",
                 (status, limit),
             )
-        return await self.fetchall(
-            "SELECT * FROM agents ORDER BY created_at DESC LIMIT ?", (limit,)
-        )
+        return await self.fetchall("SELECT * FROM agents ORDER BY created_at DESC LIMIT ?", (limit,))
 
     async def update_agent(self, agent_id: str, **fields: Any) -> None:
         """Update agent fields."""
@@ -156,9 +144,7 @@ class Database:
             return
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         values = list(fields.values()) + [agent_id]
-        await self.execute(
-            f"UPDATE agents SET {set_clause} WHERE id = ?", tuple(values)
-        )
+        await self.execute(f"UPDATE agents SET {set_clause} WHERE id = ?", tuple(values))
         await self.commit()
 
     async def delete_agent(self, agent_id: str) -> bool:
@@ -212,9 +198,7 @@ class Database:
             return
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         values = list(fields.values()) + [task_id]
-        await self.execute(
-            f"UPDATE tasks SET {set_clause} WHERE id = ?", tuple(values)
-        )
+        await self.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?", tuple(values))
         await self.commit()
 
     # Conversation operations
@@ -284,9 +268,7 @@ class Database:
             row["action_details"] = json.loads(row["action_details"])
         return row
 
-    async def get_pending_approvals(
-        self, agent_id: str | None = None
-    ) -> list[dict[str, Any]]:
+    async def get_pending_approvals(self, agent_id: str | None = None) -> list[dict[str, Any]]:
         """Get pending approvals."""
         if agent_id:
             rows = await self.fetchall(
@@ -294,17 +276,13 @@ class Database:
                 (agent_id,),
             )
         else:
-            rows = await self.fetchall(
-                "SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at ASC"
-            )
+            rows = await self.fetchall("SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at ASC")
         for row in rows:
             if row.get("action_details"):
                 row["action_details"] = json.loads(row["action_details"])
         return rows
 
-    async def resolve_approval(
-        self, approval_id: str, status: str, resolved_by: str
-    ) -> None:
+    async def resolve_approval(self, approval_id: str, status: str, resolved_by: str) -> None:
         """Resolve an approval request."""
         await self.execute(
             """
@@ -317,9 +295,7 @@ class Database:
         await self.commit()
 
     # Secret operations
-    async def store_secret(
-        self, key: str, encrypted_value: bytes, nonce: bytes
-    ) -> None:
+    async def store_secret(self, key: str, encrypted_value: bytes, nonce: bytes) -> None:
         """Store an encrypted secret."""
         await self.execute(
             """
@@ -336,9 +312,7 @@ class Database:
 
     async def get_secret(self, key: str) -> tuple[bytes, bytes] | None:
         """Get encrypted secret and nonce."""
-        row = await self.fetchone(
-            "SELECT encrypted_value, nonce FROM secrets WHERE key = ?", (key,)
-        )
+        row = await self.fetchone("SELECT encrypted_value, nonce FROM secrets WHERE key = ?", (key,))
         if row:
             return row["encrypted_value"], row["nonce"]
         return None
@@ -371,14 +345,19 @@ class Database:
             INSERT INTO agent_messages (id, from_agent, to_agent, task_id, message_type, content, metadata)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (message_id, from_agent, to_agent, task_id, message_type, content,
-             json.dumps(metadata) if metadata else None),
+            (
+                message_id,
+                from_agent,
+                to_agent,
+                task_id,
+                message_type,
+                content,
+                json.dumps(metadata) if metadata else None,
+            ),
         )
         await self.commit()
 
-    async def get_agent_messages(
-        self, agent_id: str, unread_only: bool = False
-    ) -> list[dict[str, Any]]:
+    async def get_agent_messages(self, agent_id: str, unread_only: bool = False) -> list[dict[str, Any]]:
         """Get messages for an agent."""
         if unread_only:
             rows = await self.fetchall(
@@ -397,15 +376,11 @@ class Database:
 
     async def mark_message_read(self, message_id: str) -> None:
         """Mark a message as read."""
-        await self.execute(
-            "UPDATE agent_messages SET read = 1 WHERE id = ?", (message_id,)
-        )
+        await self.execute("UPDATE agent_messages SET read = 1 WHERE id = ?", (message_id,))
         await self.commit()
 
     # Shared context operations
-    async def set_shared_context(
-        self, task_id: str, key: str, value: Any, updated_by: str
-    ) -> None:
+    async def set_shared_context(self, task_id: str, key: str, value: Any, updated_by: str) -> None:
         """Set a shared context value."""
         await self.execute(
             """
@@ -422,9 +397,7 @@ class Database:
 
     async def get_shared_context(self, task_id: str) -> dict[str, Any]:
         """Get all shared context for a task."""
-        rows = await self.fetchall(
-            "SELECT key, value FROM shared_context WHERE task_id = ?", (task_id,)
-        )
+        rows = await self.fetchall("SELECT key, value FROM shared_context WHERE task_id = ?", (task_id,))
         return {row["key"]: json.loads(row["value"]) for row in rows}
 
     # Template operations
@@ -452,9 +425,15 @@ class Database:
                 priority = excluded.priority,
                 updated_at = datetime('now')
             """,
-            (name, task, model, system_prompt,
-             1 if supervised else (0 if supervised is False else None),
-             timeout_mode, priority),
+            (
+                name,
+                task,
+                model,
+                system_prompt,
+                1 if supervised else (0 if supervised is False else None),
+                timeout_mode,
+                priority,
+            ),
         )
         await self.commit()
 

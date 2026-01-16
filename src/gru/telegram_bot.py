@@ -149,7 +149,7 @@ class TelegramBot:
                 f"Output is {len(text)} chars ({len(chunks)} messages). Sending as messages...",
             )
             for i, chunk in enumerate(chunks):
-                await self._app.bot.send_message(chat_id, f"[{i+1}/{len(chunks)}]\n{chunk}")
+                await self._app.bot.send_message(chat_id, f"[{i + 1}/{len(chunks)}]\n{chunk}")
                 await asyncio.sleep(0.1)
 
     def _split_message(self, text: str) -> list[str]:
@@ -164,7 +164,7 @@ class TelegramBot:
                 if len(line) > self.MAX_MESSAGE_LENGTH:
                     # Line itself is too long, force split
                     for i in range(0, len(line), self.MAX_MESSAGE_LENGTH):
-                        chunks.append(line[i:i + self.MAX_MESSAGE_LENGTH])
+                        chunks.append(line[i : i + self.MAX_MESSAGE_LENGTH])
                     current = ""
                 else:
                     current = line
@@ -352,7 +352,7 @@ Default workdir: {self.config.default_workdir}"""
                 f"Workdir: {agent.get('workdir', 'N/A')}\n"
                 f"Created: {agent['created_at']}"
             )
-            if agent.get('error'):
+            if agent.get("error"):
                 msg += f"\nError: {agent['error']}"
             await update.message.reply_text(msg)  # type: ignore
         else:
@@ -379,9 +379,7 @@ Default workdir: {self.config.default_workdir}"""
 
         lines = []
         for agent in agents[:20]:
-            lines.append(
-                f"{agent['id']} [{agent['status']}] {agent['task'][:40]}..."
-            )
+            lines.append(f"{agent['id']} [{agent['status']}] {agent['task'][:40]}...")
 
         await update.message.reply_text("\n".join(lines))  # type: ignore
 
@@ -603,9 +601,7 @@ Default workdir: {self.config.default_workdir}"""
 
     # Callback handlers
 
-    async def callback_approval(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ) -> None:
+    async def callback_approval(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle approval button callbacks."""
         query = update.callback_query
         if not query or not query.data:
@@ -704,9 +700,7 @@ Default workdir: {self.config.default_workdir}"""
         except RuntimeError:
             pass  # No running loop
 
-    def approval_callback(
-        self, approval_id: str, details: dict
-    ) -> asyncio.Future:
+    def approval_callback(self, approval_id: str, details: dict) -> asyncio.Future:
         """Callback for orchestrator approval requests."""
         loop = asyncio.get_running_loop()
         future: asyncio.Future = loop.create_future()
@@ -725,38 +719,23 @@ Default workdir: {self.config.default_workdir}"""
                     # Truncate display text but use index in callback
                     display_text = str(opt)[:100] if len(str(opt)) > 100 else str(opt)
                     # callback_data: "option:{8-char-id}:{index}" = ~20 bytes max
-                    buttons.append([
-                        InlineKeyboardButton(
-                            display_text,
-                            callback_data=f"option:{approval_id}:{idx}"
-                        )
-                    ])
+                    buttons.append([InlineKeyboardButton(display_text, callback_data=f"option:{approval_id}:{idx}")])
                 # Add decline option
-                buttons.append([
-                    InlineKeyboardButton(
-                        "Decline to answer",
-                        callback_data=f"reject:{approval_id}"
-                    )
-                ])
+                buttons.append([InlineKeyboardButton("Decline to answer", callback_data=f"reject:{approval_id}")])
                 keyboard = InlineKeyboardMarkup(buttons)
                 question = details.get("question", "Please select an option:")
                 text = f"Input requested: {approval_id}\n\n{question}"
             else:
                 # Standard approve/reject for non-option requests
-                keyboard = InlineKeyboardMarkup([
+                keyboard = InlineKeyboardMarkup(
                     [
-                        InlineKeyboardButton(
-                            "Approve", callback_data=f"approve:{approval_id}"
-                        ),
-                        InlineKeyboardButton(
-                            "Reject", callback_data=f"reject:{approval_id}"
-                        ),
+                        [
+                            InlineKeyboardButton("Approve", callback_data=f"approve:{approval_id}"),
+                            InlineKeyboardButton("Reject", callback_data=f"reject:{approval_id}"),
+                        ]
                     ]
-                ])
-                text = (
-                    f"Approval requested: {approval_id}\n"
-                    f"{json.dumps(details, indent=2)[:500]}"
                 )
+                text = f"Approval requested: {approval_id}\n{json.dumps(details, indent=2)[:500]}"
 
             sent_messages: list[tuple[int, int]] = []
             for admin_id in self.config.telegram_admin_ids:
@@ -868,38 +847,29 @@ Be concise and helpful."""
 
         # Define spawn tool for Claude
         from gru.claude import ToolDefinition
+
         spawn_tool = ToolDefinition(
             name="spawn_agent",
             description="Spawn a new AI agent to perform a task",
             input_schema={
                 "type": "object",
                 "properties": {
-                    "task": {
-                        "type": "string",
-                        "description": "The task description for the agent"
-                    },
-                    "workdir": {
-                        "type": "string",
-                        "description": "Working directory path (optional)"
-                    },
+                    "task": {"type": "string", "description": "The task description for the agent"},
+                    "workdir": {"type": "string", "description": "Working directory path (optional)"},
                     "oneshot": {
                         "type": "boolean",
                         "description": "If true, run fully autonomous (no approvals, auto-proceed)",
-                        "default": False
+                        "default": False,
                     },
                     "supervised": {
                         "type": "boolean",
                         "description": "If true, require approval for file writes and bash",
-                        "default": True
+                        "default": True,
                     },
-                    "priority": {
-                        "type": "string",
-                        "enum": ["high", "normal", "low"],
-                        "default": "normal"
-                    }
+                    "priority": {"type": "string", "enum": ["high", "normal", "low"], "default": "normal"},
                 },
-                "required": ["task"]
-            }
+                "required": ["task"],
+            },
         )
 
         try:
@@ -950,11 +920,7 @@ Be concise and helpful."""
 
     async def start(self) -> None:
         """Start the Telegram bot."""
-        self._app = (
-            Application.builder()
-            .token(self.config.telegram_token)
-            .build()
-        )
+        self._app = Application.builder().token(self.config.telegram_token).build()
 
         # Register handlers
         self._app.add_handler(CommandHandler("start", self.cmd_start))

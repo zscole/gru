@@ -292,6 +292,7 @@ def reject(ctx: click.Context, approval_id: str) -> None:
 
 # Secret management commands
 
+
 @cli.group()
 def secret():
     """Manage encrypted secrets."""
@@ -363,6 +364,7 @@ def secret_delete(ctx: click.Context, key: str) -> None:
 
 
 # Template management commands
+
 
 @cli.group()
 def template():
