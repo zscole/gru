@@ -1,5 +1,9 @@
 # Gru
 
+[![CI](https://github.com/zscole/gru/actions/workflows/ci.yml/badge.svg)](https://github.com/zscole/gru/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+
 Self-hosted AI agent orchestration service controlled via Telegram.
 
 Gru lets you spawn, manage, and interact with Claude-powered AI agents from your phone. Agents can execute bash commands, read/write files, and work autonomously on tasks in specified directories.
