@@ -26,6 +26,11 @@ class Config:
     discord_admin_ids: list[int] = field(default_factory=list)
     discord_guild_id: int | None = None  # Optional: restrict to specific server
 
+    # Slack
+    slack_bot_token: str = ""  # xoxb-... Bot User OAuth Token
+    slack_app_token: str = ""  # xapp-... App-Level Token for Socket Mode
+    slack_admin_ids: list[str] = field(default_factory=list)  # Slack user IDs (strings)
+
     # Anthropic
     anthropic_api_key: str = ""
     default_model: str = "claude-sonnet-4-20250514"
@@ -83,6 +88,9 @@ class Config:
         if guild_id_str := os.getenv("GRU_DISCORD_GUILD_ID"):
             discord_guild_id = int(guild_id_str)
 
+        slack_admin_ids_raw = os.getenv("GRU_SLACK_ADMIN_IDS", "")
+        slack_admin_ids = [x.strip() for x in slack_admin_ids_raw.split(",") if x.strip()]
+
         data_dir = Path(os.getenv("GRU_DATA_DIR", str(Path.home() / ".gru")))
         workdir = Path(os.getenv("GRU_WORKDIR", str(Path.home() / "gru-workspace")))
 
@@ -93,6 +101,9 @@ class Config:
             discord_token=os.getenv("GRU_DISCORD_TOKEN", ""),
             discord_admin_ids=discord_admin_ids,
             discord_guild_id=discord_guild_id,
+            slack_bot_token=os.getenv("GRU_SLACK_BOT_TOKEN", ""),
+            slack_app_token=os.getenv("GRU_SLACK_APP_TOKEN", ""),
+            slack_admin_ids=slack_admin_ids,
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             default_model=os.getenv("GRU_DEFAULT_MODEL", "claude-sonnet-4-20250514"),
             max_tokens=int(os.getenv("GRU_MAX_TOKENS", "8192")),
@@ -114,12 +125,14 @@ class Config:
         # At least one bot interface required
         has_telegram = self.telegram_token and self.telegram_admin_ids
         has_discord = self.discord_token and self.discord_admin_ids
+        has_slack = self.slack_bot_token and self.slack_app_token and self.slack_admin_ids
 
-        if not has_telegram and not has_discord:
+        if not has_telegram and not has_discord and not has_slack:
             errors.append(
                 "At least one bot interface required: "
                 "set GRU_TELEGRAM_TOKEN + GRU_ADMIN_IDS or "
-                "GRU_DISCORD_TOKEN + GRU_DISCORD_ADMIN_IDS"
+                "GRU_DISCORD_TOKEN + GRU_DISCORD_ADMIN_IDS or "
+                "GRU_SLACK_BOT_TOKEN + GRU_SLACK_APP_TOKEN + GRU_SLACK_ADMIN_IDS"
             )
 
         # Validate partial configs
@@ -131,6 +144,18 @@ class Config:
             errors.append("GRU_DISCORD_ADMIN_IDS required when using Discord")
         if self.discord_admin_ids and not self.discord_token:
             errors.append("GRU_DISCORD_TOKEN required when using Discord")
+
+        # Slack requires both tokens
+        slack_partial = self.slack_bot_token or self.slack_app_token or self.slack_admin_ids
+        if slack_partial and not has_slack:
+            missing = []
+            if not self.slack_bot_token:
+                missing.append("GRU_SLACK_BOT_TOKEN")
+            if not self.slack_app_token:
+                missing.append("GRU_SLACK_APP_TOKEN")
+            if not self.slack_admin_ids:
+                missing.append("GRU_SLACK_ADMIN_IDS")
+            errors.append(f"Slack requires all of: {', '.join(missing)}")
 
         if not self.anthropic_api_key:
             errors.append("ANTHROPIC_API_KEY is required")

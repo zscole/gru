@@ -14,6 +14,7 @@ from gru.crypto import CryptoManager, SecretStore
 from gru.db import Database
 from gru.discord_bot import DiscordBot
 from gru.orchestrator import Orchestrator
+from gru.slack_bot import SlackBot
 from gru.telegram_bot import TelegramBot
 
 logger = logging.getLogger(__name__)
@@ -46,12 +47,16 @@ async def run_server(config: Config) -> None:
     # Initialize bots based on configuration
     telegram_bot: TelegramBot | None = None
     discord_bot: DiscordBot | None = None
+    slack_bot: SlackBot | None = None
 
     if config.telegram_token and config.telegram_admin_ids:
         telegram_bot = TelegramBot(config, orchestrator)
 
     if config.discord_token and config.discord_admin_ids:
         discord_bot = DiscordBot(config, orchestrator)
+
+    if config.slack_bot_token and config.slack_app_token and config.slack_admin_ids:
+        slack_bot = SlackBot(config, orchestrator)
 
     # Set up signal handlers
     loop = asyncio.get_running_loop()
@@ -83,6 +88,12 @@ async def run_server(config: Config) -> None:
             logger.info("Discord bot starting...")
             logger.info("Discord admin IDs: %s", config.discord_admin_ids)
 
+        # Start Slack bot (runs in background task via Socket Mode)
+        if slack_bot:
+            asyncio.create_task(slack_bot.start())
+            logger.info("Slack bot starting...")
+            logger.info("Slack admin IDs: %s", config.slack_admin_ids)
+
         logger.info("Gru server started")
         logger.info("Data directory: %s", config.data_dir)
 
@@ -100,6 +111,8 @@ async def run_server(config: Config) -> None:
             await telegram_bot.stop()
         if discord_bot:
             await discord_bot.stop()
+        if slack_bot:
+            await slack_bot.stop()
         await db.close()
         logger.info("Shutdown complete")
 
@@ -124,6 +137,7 @@ def main() -> None:
         print("\nAt least one bot interface required:")
         print("  Telegram: GRU_TELEGRAM_TOKEN + GRU_ADMIN_IDS")
         print("  Discord:  GRU_DISCORD_TOKEN + GRU_DISCORD_ADMIN_IDS")
+        print("  Slack:    GRU_SLACK_BOT_TOKEN + GRU_SLACK_APP_TOKEN + GRU_SLACK_ADMIN_IDS")
         print("\nRequired:")
         print("  ANTHROPIC_API_KEY - Anthropic API key")
         print("\nTelegram:")
@@ -133,6 +147,10 @@ def main() -> None:
         print("  GRU_DISCORD_TOKEN - Discord bot token")
         print("  GRU_DISCORD_ADMIN_IDS - Comma-separated admin Discord user IDs")
         print("  GRU_DISCORD_GUILD_ID - (optional) Restrict to specific server")
+        print("\nSlack:")
+        print("  GRU_SLACK_BOT_TOKEN - Slack Bot User OAuth Token (xoxb-...)")
+        print("  GRU_SLACK_APP_TOKEN - Slack App-Level Token for Socket Mode (xapp-...)")
+        print("  GRU_SLACK_ADMIN_IDS - Comma-separated admin Slack user IDs")
         print("\nOptional:")
         print("  GRU_DATA_DIR - Data directory (default: ~/.gru)")
         print("  GRU_MASTER_PASSWORD - Master password for secret encryption")
