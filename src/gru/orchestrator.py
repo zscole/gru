@@ -18,6 +18,7 @@ from gru.claude import DEFAULT_TOOLS, ClaudeClient, Response, ToolResult
 from gru.coordinator import Coordinator
 from gru.mcp import MCPClient
 from gru.scheduler import Scheduler
+from gru.worktree import WorktreeInfo, cleanup_worktree, create_worktree, get_repo_root, is_git_repo
 
 if TYPE_CHECKING:
     from gru.config import Config
@@ -39,6 +40,7 @@ class Agent:
         timeout_mode: str,
         workdir: str,
         orchestrator: Orchestrator,
+        worktree_info: WorktreeInfo | None = None,
     ) -> None:
         self.id = agent_id
         self.task = task
@@ -47,6 +49,7 @@ class Agent:
         self.timeout_mode = timeout_mode
         self.workdir = workdir
         self.orchestrator = orchestrator
+        self.worktree_info = worktree_info
         self.messages: list[dict[str, Any]] = []
         self._cancelled = False
         self._start_time: datetime | None = None
@@ -169,6 +172,31 @@ class Orchestrator:
         # Ensure workdir exists
         Path(workdir).mkdir(parents=True, exist_ok=True)
 
+        # Check if we should use git worktrees for isolation
+        worktree_info: WorktreeInfo | None = None
+        worktree_path: str | None = None
+        worktree_branch: str | None = None
+        base_repo: str | None = None
+        effective_workdir = workdir
+
+        if self.config.enable_worktrees and is_git_repo(Path(workdir)):
+            repo_root = get_repo_root(Path(workdir))
+            if repo_root:
+                # Create worktree for this agent
+                branch_name = f"gru-agent-{agent_id}"
+                wt_base = self.config.worktree_base_dir or repo_root.parent / ".gru-worktrees"
+                wt_path = wt_base / branch_name
+
+                try:
+                    worktree_info = create_worktree(repo_root, wt_path, branch_name)
+                    worktree_path = str(worktree_info.path)
+                    worktree_branch = worktree_info.branch
+                    base_repo = str(worktree_info.base_repo)
+                    effective_workdir = worktree_path
+                except RuntimeError:
+                    # Fall back to shared workdir if worktree creation fails
+                    pass
+
         # Create agent in database
         agent_data = await self.db.create_agent(
             agent_id=agent_id,
@@ -180,6 +208,9 @@ class Orchestrator:
             timeout_mode=timeout_mode,
             priority=priority,
             workdir=workdir,
+            worktree_path=worktree_path,
+            worktree_branch=worktree_branch,
+            base_repo=base_repo,
         )
 
         # Create task
@@ -191,15 +222,16 @@ class Orchestrator:
             deadline=deadline,
         )
 
-        # Create agent object
+        # Create agent object with effective workdir (worktree path if available)
         agent = Agent(
             agent_id=agent_id,
             task=task,
             model=model,
             supervised=supervised,
             timeout_mode=timeout_mode,
-            workdir=workdir,
+            workdir=effective_workdir,
             orchestrator=self,
+            worktree_info=worktree_info,
         )
         self._agents[agent_id] = agent
 
@@ -239,6 +271,8 @@ class Orchestrator:
         agent = self._agents.get(agent_id)
         if agent:
             agent.cancel()
+            # Clean up worktree if present
+            self._cleanup_agent_worktree(agent)
             await self.db.update_agent(
                 agent_id,
                 status="terminated",
@@ -248,6 +282,19 @@ class Orchestrator:
             await self.notify(agent_id, f"Agent {agent_id} terminated")
             return True
         return False
+
+    def _cleanup_agent_worktree(self, agent: Agent) -> None:
+        """Clean up an agent's worktree if present."""
+        if agent.worktree_info:
+            try:
+                cleanup_worktree(
+                    repo_path=agent.worktree_info.base_repo,
+                    worktree_path=agent.worktree_info.path,
+                    branch_name=agent.worktree_info.branch,
+                    delete_branch_after=self.config.delete_worktree_branch,
+                )
+            except Exception as e:
+                logger.error(f"Failed to cleanup worktree for agent {agent.id}: {e}")
 
     async def nudge_agent(self, agent_id: str, message: str) -> bool:
         """Send a nudge message to an agent."""
@@ -394,6 +441,8 @@ class Orchestrator:
             await self.notify(agent.id, f"Agent {agent.id} failed: {e}")
 
         finally:
+            # Clean up worktree if present
+            self._cleanup_agent_worktree(agent)
             self._agents.pop(agent.id, None)
             self.scheduler.unregister_running(task_id)
 

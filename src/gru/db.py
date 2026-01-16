@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -37,7 +38,30 @@ class Database:
             if statement and not statement.startswith("PRAGMA"):
                 await self._conn.execute(statement)
 
+        # Migrate existing databases: add worktree columns if missing
+        await self._migrate_worktree_columns()
+
         await self._conn.commit()
+
+    async def _migrate_worktree_columns(self) -> None:
+        """Add worktree columns to existing databases."""
+        if not self._conn:
+            return
+
+        # Check if columns exist by querying table info
+        cursor = await self._conn.execute("PRAGMA table_info(agents)")
+        columns = {row[1] for row in await cursor.fetchall()}
+
+        migrations = [
+            ("worktree_path", "ALTER TABLE agents ADD COLUMN worktree_path TEXT"),
+            ("worktree_branch", "ALTER TABLE agents ADD COLUMN worktree_branch TEXT"),
+            ("base_repo", "ALTER TABLE agents ADD COLUMN base_repo TEXT"),
+        ]
+
+        for col_name, sql in migrations:
+            if col_name not in columns:
+                with contextlib.suppress(Exception):
+                    await self._conn.execute(sql)
 
     async def close(self) -> None:
         """Close database connection."""
@@ -100,13 +124,17 @@ class Database:
         memory_limit: str | None = None,
         cpu_quota: int | None = None,
         workdir: str | None = None,
+        worktree_path: str | None = None,
+        worktree_branch: str | None = None,
+        base_repo: str | None = None,
     ) -> dict[str, Any]:
         """Create a new agent."""
         await self.execute(
             """
             INSERT INTO agents (id, name, task, model, system_prompt, supervised,
-                              timeout_mode, priority, memory_limit, cpu_quota, workdir)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              timeout_mode, priority, memory_limit, cpu_quota, workdir,
+                              worktree_path, worktree_branch, base_repo)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 agent_id,
@@ -120,6 +148,9 @@ class Database:
                 memory_limit,
                 cpu_quota,
                 workdir,
+                worktree_path,
+                worktree_branch,
+                base_repo,
             ),
         )
         await self.commit()

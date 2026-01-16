@@ -47,6 +47,11 @@ class Config:
     default_memory_limit: str = "512M"
     default_cpu_quota: int = 50  # percent
 
+    # Git worktrees (agent isolation)
+    enable_worktrees: bool = True  # Auto-create worktrees when workdir is a git repo
+    worktree_base_dir: Path | None = None  # Where to create worktrees (default: workdir/../.gru-worktrees)
+    delete_worktree_branch: bool = False  # Delete branch when agent completes
+
     # Encryption
     master_key_iterations: int = 480000
 
@@ -82,6 +87,9 @@ class Config:
             enable_cgroups=os.getenv("GRU_ENABLE_CGROUPS", "false").lower() == "true",
             default_memory_limit=os.getenv("GRU_MEMORY_LIMIT", "512M"),
             default_cpu_quota=int(os.getenv("GRU_CPU_QUOTA", "50")),
+            enable_worktrees=os.getenv("GRU_ENABLE_WORKTREES", "true").lower() == "true",
+            worktree_base_dir=Path(os.getenv("GRU_WORKTREE_DIR")) if os.getenv("GRU_WORKTREE_DIR") else None,
+            delete_worktree_branch=os.getenv("GRU_DELETE_WORKTREE_BRANCH", "false").lower() == "true",
         )
 
     def validate(self) -> list[str]:
