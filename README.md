@@ -26,11 +26,11 @@ Gru lets you spawn, manage, and interact with Claude-powered AI agents from your
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/gru.git
+git clone https://github.com/zscole/gru.git
 cd gru
 python3 -m venv .venv
 source .venv/bin/activate
-pip install anthropic python-telegram-bot aiosqlite click cryptography python-dotenv
+pip install -r requirements.txt
 ```
 
 ## Configuration
