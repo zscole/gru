@@ -951,10 +951,7 @@ Default workdir: {self.config.default_workdir}"""
             for a in agents[:20]:
                 num = self._assign_agent_number(a["id"])
                 nick = self._agent_nicknames.get(a["id"])
-                if nick:
-                    prefix = f"`[{num}:{nick}]`"
-                else:
-                    prefix = f"`[{num}]`"
+                prefix = f"`[{num}:{nick}]`" if nick else f"`[{num}]`"
                 lines.append(f"{prefix} [{a['status']}] {a['task']}")
             return "\n".join(lines)
 
