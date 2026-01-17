@@ -73,6 +73,11 @@ class SlackBot:
         self._pending_messages: dict[str, list[tuple[str, str]]] = {}  # approval_id -> [(channel_id, ts)]
         self._rate_limiter = RateLimiter(max_requests=20, window_seconds=60)
         self._spawn_limiter = RateLimiter(max_requests=5, window_seconds=60)
+        self._agent_numbers: dict[str, int] = {}  # agent_id -> number
+        self._number_to_agent: dict[int, str] = {}  # number -> agent_id
+        self._next_agent_number: int = 1
+        self._agent_nicknames: dict[str, str] = {}  # agent_id -> nickname
+        self._nickname_to_agent: dict[str, str] = {}  # nickname -> agent_id
 
         # Create Slack Bolt app
         self._app = AsyncApp(token=config.slack_bot_token)
@@ -87,6 +92,51 @@ class SlackBot:
     def _is_admin(self, user_id: str) -> bool:
         """Check if user is an admin."""
         return user_id in self.config.slack_admin_ids
+
+    def _assign_agent_number(self, agent_id: str) -> int:
+        """Assign a short number to an agent and return it."""
+        if agent_id in self._agent_numbers:
+            return self._agent_numbers[agent_id]
+        num = self._next_agent_number
+        self._next_agent_number += 1
+        self._agent_numbers[agent_id] = num
+        self._number_to_agent[num] = agent_id
+        return num
+
+    def _resolve_agent_ref(self, ref: str) -> str | None:
+        """Resolve a nickname, number, or agent ID to the actual agent ID."""
+        # Check nickname first
+        if ref in self._nickname_to_agent:
+            return self._nickname_to_agent[ref]
+        # Check number
+        if ref.isdigit():
+            num = int(ref)
+            return self._number_to_agent.get(num)
+        # Assume it's a full agent ID
+        return ref
+
+    def _set_agent_nickname(self, agent_id: str, nickname: str) -> bool:
+        """Set a nickname for an agent. Returns False if nickname is taken."""
+        # Remove old nickname if exists
+        old_nick = self._agent_nicknames.get(agent_id)
+        if old_nick:
+            del self._nickname_to_agent[old_nick]
+        # Check if new nickname is taken by another agent
+        if nickname in self._nickname_to_agent and self._nickname_to_agent[nickname] != agent_id:
+            return False
+        self._agent_nicknames[agent_id] = nickname
+        self._nickname_to_agent[nickname] = agent_id
+        return True
+
+    def _get_agent_display(self, agent_id: str) -> str:
+        """Get display string for agent with its number and optional nickname."""
+        num = self._agent_numbers.get(agent_id)
+        nick = self._agent_nicknames.get(agent_id)
+        if num and nick:
+            return f"[{num}:{nick}]"
+        elif num:
+            return f"[{num}]"
+        return agent_id
 
     async def _respond_ephemeral(self, respond: Any, text: str) -> None:
         """Send an ephemeral response."""
@@ -654,12 +704,295 @@ Default workdir: `{self.config.default_workdir}`"""
                 blocks=[],
             )
 
+    def _get_chat_tools(self) -> list:
+        """Get tool definitions for natural language chat."""
+        from gru.claude import ToolDefinition
+
+        return [
+            ToolDefinition(
+                name="spawn_agent",
+                description="Spawn a new AI agent to perform a task",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "task": {"type": "string", "description": "The task description for the agent"},
+                        "workdir": {"type": "string", "description": "Working directory path (optional)"},
+                        "oneshot": {
+                            "type": "boolean",
+                            "description": "If true, run fully autonomous (no approvals)",
+                            "default": False,
+                        },
+                        "supervised": {
+                            "type": "boolean",
+                            "description": "If true, require approval for file writes and bash",
+                            "default": True,
+                        },
+                        "priority": {"type": "string", "enum": ["high", "normal", "low"], "default": "normal"},
+                    },
+                    "required": ["task"],
+                },
+            ),
+            ToolDefinition(
+                name="terminate_agent",
+                description="Terminate/kill a running or failed agent",
+                input_schema={
+                    "type": "object",
+                    "properties": {"agent_ref": {"type": "string", "description": "Agent number (e.g. '1') or full ID"}},
+                    "required": ["agent_ref"],
+                },
+            ),
+            ToolDefinition(
+                name="pause_agent",
+                description="Pause a running agent",
+                input_schema={
+                    "type": "object",
+                    "properties": {"agent_ref": {"type": "string", "description": "Agent number (e.g. '1') or full ID"}},
+                    "required": ["agent_ref"],
+                },
+            ),
+            ToolDefinition(
+                name="resume_agent",
+                description="Resume a paused agent",
+                input_schema={
+                    "type": "object",
+                    "properties": {"agent_ref": {"type": "string", "description": "Agent number (e.g. '1') or full ID"}},
+                    "required": ["agent_ref"],
+                },
+            ),
+            ToolDefinition(
+                name="get_status",
+                description="Get status of a specific agent or overall system status",
+                input_schema={
+                    "type": "object",
+                    "properties": {"agent_ref": {"type": "string", "description": "Agent number (e.g. '1') or full ID (optional)"}},
+                },
+            ),
+            ToolDefinition(
+                name="list_agents",
+                description="List all agents, optionally filtered by status",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "status": {
+                            "type": "string",
+                            "enum": ["running", "paused", "completed", "failed"],
+                            "description": "Filter by status (optional)",
+                        }
+                    },
+                },
+            ),
+            ToolDefinition(
+                name="get_pending_approvals",
+                description="Get list of pending approval requests",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            ToolDefinition(
+                name="approve_action",
+                description="Approve a pending approval request",
+                input_schema={
+                    "type": "object",
+                    "properties": {"approval_id": {"type": "string", "description": "The approval ID to approve"}},
+                    "required": ["approval_id"],
+                },
+            ),
+            ToolDefinition(
+                name="reject_action",
+                description="Reject a pending approval request",
+                input_schema={
+                    "type": "object",
+                    "properties": {"approval_id": {"type": "string", "description": "The approval ID to reject"}},
+                    "required": ["approval_id"],
+                },
+            ),
+            ToolDefinition(
+                name="nudge_agent",
+                description="Send a message to a running agent to ask for status or give instructions",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "agent_ref": {"type": "string", "description": "Agent number (e.g. '1'), nickname, or full ID"},
+                        "message": {
+                            "type": "string",
+                            "description": "Message to send (default: ask for status)",
+                            "default": "Briefly report your current progress and what you're working on.",
+                        },
+                    },
+                    "required": ["agent_ref"],
+                },
+            ),
+            ToolDefinition(
+                name="nickname_agent",
+                description="Assign a nickname to an agent for easier reference",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "agent_ref": {"type": "string", "description": "Agent number (e.g. '1') or full ID"},
+                        "nickname": {"type": "string", "description": "Nickname to assign (e.g. 'linter', 'deploy')"},
+                    },
+                    "required": ["agent_ref", "nickname"],
+                },
+            ),
+        ]
+
+    async def _handle_tool_use(self, tool_name: str, params: dict) -> str:
+        """Handle a tool use and return the result message."""
+        if tool_name == "spawn_agent":
+            task = params.get("task", "")
+            workdir = params.get("workdir")
+            oneshot = params.get("oneshot", False)
+            supervised = not oneshot and params.get("supervised", True)
+            timeout_mode = "auto" if oneshot else "block"
+            priority = params.get("priority", "normal")
+
+            agent = await self.orchestrator.spawn_agent(
+                task=task,
+                supervised=supervised,
+                priority=priority,
+                workdir=workdir,
+                timeout_mode=timeout_mode,
+            )
+
+            num = self._assign_agent_number(agent["id"])
+            mode_str = "oneshot (fully autonomous)" if oneshot else ("supervised" if supervised else "unsupervised")
+            return (
+                f"Agent spawned: `[{num}]` {agent['id']}\n"
+                f"Task: {task}\n"
+                f"Mode: {mode_str}\n"
+                f"Priority: {priority}\n"
+                f"Workdir: {agent.get('workdir', self.config.default_workdir)}"
+            )
+
+        elif tool_name == "terminate_agent":
+            ref = params.get("agent_ref", "")
+            agent_id = self._resolve_agent_ref(ref)
+            if not agent_id:
+                return f"Unknown agent: {ref}"
+            success = await self.orchestrator.terminate_agent(agent_id)
+            display = self._get_agent_display(agent_id)
+            return f"Agent {display} terminated" if success else f"Could not terminate agent {display}"
+
+        elif tool_name == "pause_agent":
+            ref = params.get("agent_ref", "")
+            agent_id = self._resolve_agent_ref(ref)
+            if not agent_id:
+                return f"Unknown agent: {ref}"
+            success = await self.orchestrator.pause_agent(agent_id)
+            display = self._get_agent_display(agent_id)
+            return f"Agent {display} paused" if success else f"Could not pause agent {display}"
+
+        elif tool_name == "resume_agent":
+            ref = params.get("agent_ref", "")
+            agent_id = self._resolve_agent_ref(ref)
+            if not agent_id:
+                return f"Unknown agent: {ref}"
+            success = await self.orchestrator.resume_agent(agent_id)
+            display = self._get_agent_display(agent_id)
+            return f"Agent {display} resumed" if success else f"Could not resume agent {display}"
+
+        elif tool_name == "get_status":
+            ref = params.get("agent_ref")
+            if ref:
+                agent_id = self._resolve_agent_ref(ref)
+                if not agent_id:
+                    return f"Unknown agent: {ref}"
+                agent_info = await self.orchestrator.get_agent(agent_id)
+                if not agent_info:
+                    return f"Agent not found: {ref}"
+                display = self._get_agent_display(agent_id)
+                msg = (
+                    f"*Agent {display}*\n"
+                    f"Status: {agent_info['status']}\n"
+                    f"Task: {agent_info['task'][:100]}\n"
+                    f"Model: {agent_info['model']}\n"
+                    f"Supervised: {bool(agent_info['supervised'])}\n"
+                    f"Workdir: {agent_info.get('workdir', 'N/A')}\n"
+                    f"Created: {agent_info['created_at']}"
+                )
+                if agent_info.get("error"):
+                    msg += f"\nError: {agent_info['error']}"
+                return msg
+            else:
+                status = await self.orchestrator.get_status()
+                return (
+                    f"*Orchestrator Status*\n"
+                    f"Running: {status['running']}\n"
+                    f"Agents: {status['agents']['total']} total, "
+                    f"{status['agents']['running']} running, "
+                    f"{status['agents']['paused']} paused\n"
+                    f"Queue: {status['scheduler']['queued']} queued"
+                )
+
+        elif tool_name == "list_agents":
+            status_filter = params.get("status")
+            agents = await self.orchestrator.list_agents(status_filter)
+            if not agents:
+                return "No agents found"
+            lines = []
+            for a in agents[:20]:
+                num = self._assign_agent_number(a["id"])
+                nick = self._agent_nicknames.get(a["id"])
+                if nick:
+                    prefix = f"`[{num}:{nick}]`"
+                else:
+                    prefix = f"`[{num}]`"
+                lines.append(f"{prefix} [{a['status']}] {a['task']}")
+            return "\n".join(lines)
+
+        elif tool_name == "get_pending_approvals":
+            pending = await self.orchestrator.get_pending_approvals()
+            if not pending:
+                return "No pending approvals"
+            lines = [f"`{p['id']}`: {p['action_type']} for agent {p['agent_id']}" for p in pending]
+            return "\n".join(lines)
+
+        elif tool_name == "approve_action":
+            approval_id = params.get("approval_id", "")
+            if approval_id in self._pending_approvals:
+                self._pending_approvals[approval_id].set_result("Confirmed")
+                del self._pending_approvals[approval_id]
+            success = await self.orchestrator.approve(approval_id, approved=True)
+            return f"Approved: {approval_id}" if success else f"Approval not found: {approval_id}"
+
+        elif tool_name == "reject_action":
+            approval_id = params.get("approval_id", "")
+            if approval_id in self._pending_approvals:
+                self._pending_approvals[approval_id].set_result(None)
+                del self._pending_approvals[approval_id]
+            success = await self.orchestrator.approve(approval_id, approved=False)
+            return f"Rejected: {approval_id}" if success else f"Approval not found: {approval_id}"
+
+        elif tool_name == "nudge_agent":
+            ref = params.get("agent_ref", "")
+            agent_id = self._resolve_agent_ref(ref)
+            if not agent_id:
+                return f"Unknown agent: {ref}"
+            message = params.get("message", "Briefly report your current progress and what you're working on.")
+            success = await self.orchestrator.nudge_agent(agent_id, message)
+            display = self._get_agent_display(agent_id)
+            if success:
+                return f"Nudge sent to agent {display}. Response will appear when agent processes it."
+            return f"Could not nudge agent {display} (not running or not found)"
+
+        elif tool_name == "nickname_agent":
+            ref = params.get("agent_ref", "")
+            agent_id = self._resolve_agent_ref(ref)
+            if not agent_id:
+                return f"Unknown agent: {ref}"
+            nickname = params.get("nickname", "").strip()
+            if not nickname:
+                return "Nickname cannot be empty"
+            agent_num = self._agent_numbers.get(agent_id, 0)
+            if self._set_agent_nickname(agent_id, nickname):
+                return f"Agent [{agent_num}] is now nicknamed `{nickname}`"
+            return f"Nickname `{nickname}` is already taken"
+
+        return f"Unknown tool: {tool_name}"
+
     def _register_messages(self) -> None:
         """Register message handlers for natural language."""
 
         @self._app.event("message")
         async def handle_message(event: dict, say: Any) -> None:
-            # Only handle direct messages
             if event.get("channel_type") != "im":
                 return
 
@@ -675,78 +1008,25 @@ Default workdir: `{self.config.default_workdir}`"""
             if not text:
                 return
 
-            # Ignore bot messages
             if event.get("bot_id"):
                 return
 
             system_prompt, _ = await self._build_chat_context()
-
-            from gru.claude import ToolDefinition
-
-            spawn_tool = ToolDefinition(
-                name="spawn_agent",
-                description="Spawn a new AI agent to perform a task",
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "task": {"type": "string", "description": "The task description for the agent"},
-                        "workdir": {"type": "string", "description": "Working directory path (optional)"},
-                        "oneshot": {
-                            "type": "boolean",
-                            "description": "If true, run fully autonomous (no approvals, auto-proceed)",
-                            "default": False,
-                        },
-                        "supervised": {
-                            "type": "boolean",
-                            "description": "If true, require approval for file writes and bash",
-                            "default": True,
-                        },
-                        "priority": {"type": "string", "enum": ["high", "normal", "low"], "default": "normal"},
-                    },
-                    "required": ["task"],
-                },
-            )
+            tools = self._get_chat_tools()
 
             try:
                 response = await self.orchestrator.claude.send_message(
                     messages=[{"role": "user", "content": text}],
                     system=system_prompt,
-                    max_tokens=500,
-                    tools=[spawn_tool],
+                    max_tokens=1000,
+                    tools=tools,
                 )
 
                 if response.tool_uses:
                     for tool_use in response.tool_uses:
-                        if tool_use.name == "spawn_agent":
-                            params = tool_use.input
-                            task = params.get("task", "")
-                            workdir = params.get("workdir")
-                            oneshot = params.get("oneshot", False)
-                            supervised = not oneshot and params.get("supervised", True)
-                            timeout_mode = "auto" if oneshot else "block"
-                            priority = params.get("priority", "normal")
-
-                            agent = await self.orchestrator.spawn_agent(
-                                task=task,
-                                supervised=supervised,
-                                priority=priority,
-                                workdir=workdir,
-                                timeout_mode=timeout_mode,
-                            )
-
-                            mode_str = (
-                                "oneshot (fully autonomous)"
-                                if oneshot
-                                else ("supervised" if supervised else "unsupervised")
-                            )
-                            await say(
-                                f"Agent spawned: `{agent['id']}`\n"
-                                f"Task: {task}\n"
-                                f"Mode: {mode_str}\n"
-                                f"Priority: {priority}\n"
-                                f"Workdir: {agent.get('workdir', self.config.default_workdir)}"
-                            )
-                            return
+                        result = await self._handle_tool_use(tool_use.name, tool_use.input)
+                        await say(result)
+                    return
 
                 await say(response.content or "I couldn't generate a response.")
             except Exception as e:
