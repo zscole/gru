@@ -47,6 +47,7 @@ class Config:
     max_agent_runtime: int = 3600  # seconds (1 hour)
     max_agent_turns: int = 100  # max Claude API calls per agent
     max_conversation_messages: int = 50  # max messages before truncation
+    max_tool_output: int = 50000  # max chars per tool output (~12k tokens)
 
     # Scheduler
     scheduler_interval: float = 0.1  # seconds
@@ -61,6 +62,7 @@ class Config:
     enable_worktrees: bool = True  # Auto-create worktrees when workdir is a git repo
     worktree_base_dir: Path | None = None  # Where to create worktrees (default: workdir/../.gru-worktrees)
     delete_worktree_branch: bool = False  # Delete branch when agent completes
+    auto_push: bool = True  # Auto commit and push on agent pause/complete
 
     # Encryption
     master_key_iterations: int = 480000

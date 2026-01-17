@@ -18,7 +18,14 @@ from gru.claude import DEFAULT_TOOLS, ClaudeClient, Response, ToolResult
 from gru.coordinator import Coordinator
 from gru.mcp import MCPClient
 from gru.scheduler import Scheduler
-from gru.worktree import WorktreeInfo, cleanup_worktree, create_worktree, get_repo_root, is_git_repo
+from gru.worktree import (
+    WorktreeInfo,
+    cleanup_worktree,
+    commit_and_push,
+    create_worktree,
+    get_repo_root,
+    is_git_repo,
+)
 
 if TYPE_CHECKING:
     from gru.config import Config
@@ -252,8 +259,14 @@ class Orchestrator:
         """Pause an agent."""
         agent = self._agents.get(agent_id)
         if agent:
+            # Auto-push changes before pausing
+            task = agent.messages[0]["content"] if agent.messages else "Agent work"
+            success, status = self._auto_push_agent(agent, f"WIP: {task[:50]}")
             await self.db.update_agent(agent_id, status="paused")
-            await self.notify(agent_id, f"Agent {agent_id} paused")
+            msg = f"Agent {agent_id} paused"
+            if success and "Pushed" in status:
+                msg += f" ({status})"
+            await self.notify(agent_id, msg)
             return True
         return False
 
@@ -282,6 +295,23 @@ class Orchestrator:
             await self.notify(agent_id, f"Agent {agent_id} terminated")
             return True
         return False
+
+    def _auto_push_agent(self, agent: Agent, message: str) -> tuple[bool, str]:
+        """Auto commit and push agent's worktree if enabled."""
+        if not self.config.auto_push:
+            return True, "Auto-push disabled"
+        if not agent.worktree_info:
+            return True, "No worktree"
+        try:
+            success, status = commit_and_push(agent.worktree_info.path, message)
+            if success:
+                logger.info(f"Agent {agent.id}: {status}")
+            else:
+                logger.error(f"Agent {agent.id} auto-push failed: {status}")
+            return success, status
+        except Exception as e:
+            logger.error(f"Agent {agent.id} auto-push error: {e}")
+            return False, str(e)
 
     def _cleanup_agent_worktree(self, agent: Agent) -> None:
         """Clean up an agent's worktree if present."""
@@ -441,6 +471,9 @@ class Orchestrator:
             await self.notify(agent.id, f"Agent {agent.id} failed: {e}")
 
         finally:
+            # Auto-push changes before cleanup
+            task = agent.messages[0]["content"] if agent.messages else "Agent work"
+            self._auto_push_agent(agent, task[:100])
             # Clean up worktree if present
             self._cleanup_agent_worktree(agent)
             self._agents.pop(agent.id, None)
@@ -467,6 +500,11 @@ class Orchestrator:
             # Execute tool
             try:
                 result = await self._execute_tool(agent, tool_use.name, tool_use.input, task_id)
+                # Truncate large outputs to prevent context overflow
+                if len(result) > self.config.max_tool_output:
+                    result = result[: self.config.max_tool_output] + (
+                        f"\n\n[truncated - output exceeded {self.config.max_tool_output} chars]"
+                    )
                 results.append(
                     ToolResult(
                         tool_use_id=tool_use.id,

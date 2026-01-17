@@ -217,6 +217,114 @@ def cleanup_worktree(
     return worktree_removed
 
 
+def has_changes(worktree_path: Path) -> bool:
+    """Check if worktree has uncommitted changes."""
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return bool(result.stdout.strip())
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return False
+
+
+def has_commits_ahead(worktree_path: Path) -> bool:
+    """Check if worktree branch has commits not on origin."""
+    try:
+        branch = get_current_branch(worktree_path)
+        if not branch:
+            return False
+        result = subprocess.run(
+            ["git", "rev-list", f"origin/{branch}..HEAD", "--count"],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            # Origin branch doesn't exist yet, so we have commits to push
+            return True
+        return int(result.stdout.strip()) > 0
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError, ValueError):
+        return False
+
+
+def commit_and_push(worktree_path: Path, message: str) -> tuple[bool, str]:
+    """Stage all changes, commit (amend if exists), and force push.
+
+    Args:
+        worktree_path: Path to the worktree
+        message: Commit message
+
+    Returns:
+        Tuple of (success, status_message)
+    """
+    if not is_git_repo(worktree_path):
+        return False, "Not a git repository"
+
+    # Check for changes
+    changes = has_changes(worktree_path)
+    has_existing_commits = has_commits_ahead(worktree_path)
+
+    if not changes and not has_existing_commits:
+        return True, "No changes to push"
+
+    try:
+        # Stage all changes
+        if changes:
+            result = subprocess.run(
+                ["git", "add", "-A"],
+                cwd=worktree_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                return False, f"Failed to stage changes: {result.stderr}"
+
+            # Commit (amend if we already have commits ahead)
+            if has_existing_commits:
+                commit_cmd = ["git", "commit", "--amend", "-m", message]
+            else:
+                commit_cmd = ["git", "commit", "-m", message]
+
+            result = subprocess.run(
+                commit_cmd,
+                cwd=worktree_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                return False, f"Failed to commit: {result.stderr}"
+
+        # Force push
+        branch = get_current_branch(worktree_path)
+        if not branch:
+            return False, "Could not determine branch"
+
+        result = subprocess.run(
+            ["git", "push", "--force", "-u", "origin", branch],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            return False, f"Failed to push: {result.stderr}"
+
+        return True, f"Pushed to {branch}"
+
+    except subprocess.TimeoutExpired:
+        return False, "Git operation timed out"
+    except (FileNotFoundError, OSError) as e:
+        return False, f"Git error: {e}"
+
+
 def list_worktrees(repo_path: Path) -> list[dict[str, str]]:
     """List all worktrees in a repository.
 
