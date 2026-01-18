@@ -991,6 +991,7 @@ class TestRateLimiter:
     def test_rate_limiter_allows_initial_requests(self):
         """Test rate limiter allows initial requests."""
         from gru.telegram_bot import RateLimiter
+
         limiter = RateLimiter(max_requests=5, window_seconds=60)
         for _ in range(5):
             assert limiter.is_allowed(123) is True
@@ -998,6 +999,7 @@ class TestRateLimiter:
     def test_rate_limiter_blocks_excess_requests(self):
         """Test rate limiter blocks excess requests."""
         from gru.telegram_bot import RateLimiter
+
         limiter = RateLimiter(max_requests=3, window_seconds=60)
         # First 3 should pass
         assert limiter.is_allowed(123) is True
@@ -1009,6 +1011,7 @@ class TestRateLimiter:
     def test_rate_limiter_tracks_separate_users(self):
         """Test rate limiter tracks users separately."""
         from gru.telegram_bot import RateLimiter
+
         limiter = RateLimiter(max_requests=2, window_seconds=60)
         assert limiter.is_allowed(111) is True
         assert limiter.is_allowed(111) is True
@@ -1019,6 +1022,7 @@ class TestRateLimiter:
     def test_rate_limiter_cleanup_triggered(self):
         """Test rate limiter cleanup is triggered."""
         from gru.telegram_bot import RateLimiter
+
         limiter = RateLimiter(max_requests=5, window_seconds=60)
         # Add many users to trigger cleanup
         for i in range(limiter.CLEANUP_THRESHOLD + 10):
@@ -1180,9 +1184,11 @@ class TestSearchCommand:
     @pytest.mark.asyncio
     async def test_search_with_results(self, bot, mock_update, orchestrator):
         """Test search with results."""
-        orchestrator.search_agents = AsyncMock(return_value=[
-            {"id": "agent1", "status": "running", "task": "Fix bug"},
-        ])
+        orchestrator.search_agents = AsyncMock(
+            return_value=[
+                {"id": "agent1", "status": "running", "task": "Fix bug"},
+            ]
+        )
         await bot._cmd_search(mock_update, ["bug"])
         orchestrator.search_agents.assert_called_once_with("bug")
         args = mock_update.message.reply_text.call_args[0][0]

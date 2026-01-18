@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for i in 12 17 27 34 48 54)",
+      "Bash(do echo \"=== Mutant $i ===\")",
+      "Bash(.venv/bin/mutmut show:*)",
+      "Bash(done)",
+      "Bash(.venv/bin/mutmut run:*)",
+      "Bash(.venv/bin/python:*)",
+      "Bash(.venv/bin/python -m mutmut:*)",
+      "Bash(cat:*)"
+    ]
+  }
+}

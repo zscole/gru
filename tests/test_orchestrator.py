@@ -510,6 +510,7 @@ class TestAgent:
         """Test runtime_seconds increases after start."""
         agent.start()
         import time
+
         time.sleep(0.01)
         assert agent.runtime_seconds > 0
 
@@ -659,9 +660,11 @@ class TestOrchestratorCallbacks:
     async def test_notify_with_callback(self, orchestrator):
         """Test notify calls callback."""
         called = {}
+
         def callback(agent_id, msg):
             called["agent_id"] = agent_id
             called["msg"] = msg
+
         orchestrator.set_notify_callback(callback)
         await orchestrator.notify("agent1", "Hello")
         assert called["agent_id"] == "agent1"
@@ -675,8 +678,10 @@ class TestOrchestratorCallbacks:
     @pytest.mark.asyncio
     async def test_notify_callback_error(self, orchestrator):
         """Test notify handles callback errors."""
+
         def bad_callback(agent_id, msg):
             raise RuntimeError("Callback failed")
+
         orchestrator.set_notify_callback(bad_callback)
         # Should not raise
         await orchestrator.notify("agent1", "Hello")

@@ -543,9 +543,7 @@ class TestRateLimitCheck:
 
         result = await bot._check_rate_limit(mock_interaction)
         assert result is False
-        mock_interaction.response.send_message.assert_called_with(
-            "Rate limit exceeded. Please wait.", ephemeral=True
-        )
+        mock_interaction.response.send_message.assert_called_with("Rate limit exceeded. Please wait.", ephemeral=True)
 
     @pytest.mark.asyncio
     async def test_check_rate_limit_allowed(self, bot, mock_interaction):
@@ -590,9 +588,7 @@ class TestFormatLogEntry:
         """Test formatting list content with tool_use."""
         msg = {
             "role": "assistant",
-            "content": [
-                {"type": "tool_use", "name": "bash", "input": {"command": "ls"}}
-            ],
+            "content": [{"type": "tool_use", "name": "bash", "input": {"command": "ls"}}],
         }
         result = bot._format_log_entry(msg)
         assert "[tool]" in result
@@ -602,9 +598,7 @@ class TestFormatLogEntry:
         """Test formatting list content with tool_result."""
         msg = {
             "role": "user",
-            "content": [
-                {"type": "tool_result", "content": "file.txt", "is_error": False}
-            ],
+            "content": [{"type": "tool_result", "content": "file.txt", "is_error": False}],
         }
         result = bot._format_log_entry(msg)
         assert "[result]" in result
@@ -613,9 +607,7 @@ class TestFormatLogEntry:
         """Test formatting list content with error tool_result."""
         msg = {
             "role": "user",
-            "content": [
-                {"type": "tool_result", "content": "Command failed", "is_error": True}
-            ],
+            "content": [{"type": "tool_result", "content": "Command failed", "is_error": True}],
         }
         result = bot._format_log_entry(msg)
         assert "[error]" in result

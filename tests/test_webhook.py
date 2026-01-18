@@ -382,7 +382,7 @@ class TestVercelWebhook:
                     "url": "test.vercel.app",
                     "state": "READY",
                 }
-            }
+            },
         }
         body = json.dumps(payload).encode()
 
@@ -435,7 +435,7 @@ class TestVercelWebhook:
                     # No "url" key
                     "state": "READY",
                 }
-            }
+            },
         }
         body = json.dumps(payload).encode()
 
@@ -463,7 +463,7 @@ class TestVercelWebhook:
                     "state": "ERROR",
                     # No "errorMessage" key - should use default
                 }
-            }
+            },
         }
         body = json.dumps(payload).encode()
 
