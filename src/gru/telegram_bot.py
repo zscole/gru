@@ -266,6 +266,8 @@ class TelegramBot:
             "reject": self._cmd_reject,
             "pending": self._cmd_pending,
             "logs": self._cmd_logs,
+            "search": self._cmd_search,
+            "cost": self._cmd_cost,
             "secret": self._cmd_secret,
             "template": self._cmd_template,
         }
@@ -324,7 +326,7 @@ Default workdir: {self.config.default_workdir}"""
             return
 
         if not args:
-            usage = "Usage: /gru spawn <task> [--oneshot] [--supervised] [--priority X] [--workdir /path]"
+            usage = "Usage: /gru spawn <task> [--oneshot] [--supervised] [--live] [--priority X] [--workdir /path]"
             await update.message.reply_text(usage)  # type: ignore
             return
 
@@ -335,6 +337,7 @@ Default workdir: {self.config.default_workdir}"""
         workdir = None
         timeout_mode = "block"
         oneshot = False
+        live_output = False
 
         i = 0
         while i < len(args):
@@ -348,6 +351,9 @@ Default workdir: {self.config.default_workdir}"""
                 oneshot = True
                 supervised = False
                 timeout_mode = "auto"
+                i += 1
+            elif args[i] == "--live":
+                live_output = True
                 i += 1
             elif args[i] == "--priority" and i + 1 < len(args):
                 priority = args[i + 1]
@@ -371,6 +377,7 @@ Default workdir: {self.config.default_workdir}"""
                 priority=priority,
                 workdir=workdir,
                 timeout_mode=timeout_mode,
+                live_output=live_output,
             )
         except ValueError as e:
             await update.message.reply_text(f"Error: {e}")  # type: ignore
@@ -536,6 +543,64 @@ Default workdir: {self.config.default_workdir}"""
             lines.append(f"{p['id']}: {p['action_type']} - {details}...")
 
         await update.message.reply_text("\n".join(lines))  # type: ignore
+
+    async def _cmd_search(self, update: Update, args: list[str]) -> None:
+        """Search agents by task, name, or id."""
+        if not args:
+            await update.message.reply_text("Usage: /gru search <query>")  # type: ignore
+            return
+
+        query = " ".join(args)
+        results = await self.orchestrator.search_agents(query)
+
+        if not results:
+            await update.message.reply_text(f"No agents found matching '{query}'")  # type: ignore
+            return
+
+        lines = []
+        for a in results[:10]:  # Limit to 10 results
+            display = self._get_agent_display(a["id"])
+            status = a["status"]
+            task = a["task"][:50] + "..." if len(a["task"]) > 50 else a["task"]
+            lines.append(f"{display} [{status}] {task}")
+
+        await update.message.reply_text("\n".join(lines))  # type: ignore
+
+    async def _cmd_cost(self, update: Update, args: list[str]) -> None:
+        """Show token usage and cost for an agent or all agents."""
+        if args:
+            agent_id = self._resolve_agent_ref(args[0]) or args[0]
+            cost_info = self.orchestrator.get_agent_cost(agent_id)
+            if not cost_info:
+                cost_info = await self.orchestrator.get_agent_cost_from_db(agent_id)
+            if cost_info:
+                input_tokens, output_tokens, cost = cost_info
+                total = input_tokens + output_tokens
+                await update.message.reply_text(  # type: ignore
+                    f"Agent {agent_id}:\n"
+                    f"  Input: {input_tokens:,} tokens\n"
+                    f"  Output: {output_tokens:,} tokens\n"
+                    f"  Total: {total:,} tokens\n"
+                    f"  Est. cost: ${cost}"
+                )
+            else:
+                await update.message.reply_text(f"Agent {agent_id} not found")  # type: ignore
+        else:
+            # Show summary for all running agents
+            agents = await self.orchestrator.list_agents(status="running")
+            if not agents:
+                await update.message.reply_text("No running agents")  # type: ignore
+                return
+
+            lines = []
+            for a in agents:
+                display = self._get_agent_display(a["id"])
+                input_tokens = a.get("input_tokens", 0) or 0
+                output_tokens = a.get("output_tokens", 0) or 0
+                total = input_tokens + output_tokens
+                lines.append(f"{display}: {total:,} tokens")
+
+            await update.message.reply_text("\n".join(lines))  # type: ignore
 
     def _format_log_entry(self, msg: dict) -> str:
         """Format a conversation log entry for display."""

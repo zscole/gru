@@ -390,6 +390,7 @@ Default workdir: {self.config.default_workdir}"""
             task="Task description for the agent",
             supervised="Require approval for file writes and bash (default: true)",
             oneshot="Fully autonomous mode (default: false)",
+            live="Stream tool calls to chat in real-time (default: false)",
             priority="Task priority",
             workdir="Working directory path",
         )
@@ -405,6 +406,7 @@ Default workdir: {self.config.default_workdir}"""
             task: str,
             supervised: bool = True,
             oneshot: bool = False,
+            live: bool = False,
             priority: str = "normal",
             workdir: Optional[str] = None,  # noqa: UP045
         ):
@@ -426,6 +428,7 @@ Default workdir: {self.config.default_workdir}"""
                     priority=priority,
                     workdir=workdir,
                     timeout_mode=timeout_mode,
+                    live_output=live,
                 )
             except ValueError as e:
                 await interaction.response.send_message(f"Error: {e}", ephemeral=True)
@@ -641,6 +644,66 @@ Default workdir: {self.config.default_workdir}"""
             await interaction.response.defer()
             if interaction.channel:
                 await self.send_output(interaction.channel, output, f"logs_{resolved_id}.txt")  # type: ignore[arg-type]
+
+        @gru_group.command(name="search", description="Search agents by task, name, or id")
+        @app_commands.describe(query="Search query")
+        async def cmd_search(interaction: discord.Interaction, query: str):
+            if not await self._check_admin(interaction):
+                return
+
+            results = await self.orchestrator.search_agents(query)
+
+            if not results:
+                await interaction.response.send_message(f"No agents found matching '{query}'", ephemeral=True)
+                return
+
+            lines = []
+            for a in results[:10]:
+                display = self._get_agent_display(a["id"])
+                status = a["status"]
+                task = a["task"][:50] + "..." if len(a["task"]) > 50 else a["task"]
+                lines.append(f"{display} [{status}] {task}")
+
+            await interaction.response.send_message("\n".join(lines))
+
+        @gru_group.command(name="cost", description="Show token usage and cost")
+        @app_commands.describe(agent_id="Agent ID or number (optional)")
+        async def cmd_cost(interaction: discord.Interaction, agent_id: Optional[str] = None):  # noqa: UP045
+            if not await self._check_admin(interaction):
+                return
+
+            if agent_id:
+                resolved_id = self._resolve_agent_ref(agent_id) or agent_id
+                cost_info = self.orchestrator.get_agent_cost(resolved_id)
+                if not cost_info:
+                    cost_info = await self.orchestrator.get_agent_cost_from_db(resolved_id)
+                if cost_info:
+                    input_tokens, output_tokens, cost = cost_info
+                    total = input_tokens + output_tokens
+                    await interaction.response.send_message(
+                        f"Agent {resolved_id}:\n"
+                        f"  Input: {input_tokens:,} tokens\n"
+                        f"  Output: {output_tokens:,} tokens\n"
+                        f"  Total: {total:,} tokens\n"
+                        f"  Est. cost: ${cost}"
+                    )
+                else:
+                    await interaction.response.send_message(f"Agent {resolved_id} not found", ephemeral=True)
+            else:
+                agents = await self.orchestrator.list_agents(status="running")
+                if not agents:
+                    await interaction.response.send_message("No running agents", ephemeral=True)
+                    return
+
+                lines = []
+                for a in agents:
+                    display = self._get_agent_display(a["id"])
+                    input_tokens = a.get("input_tokens", 0) or 0
+                    output_tokens = a.get("output_tokens", 0) or 0
+                    total = input_tokens + output_tokens
+                    lines.append(f"{display}: {total:,} tokens")
+
+                await interaction.response.send_message("\n".join(lines))
 
         @gru_group.command(name="secret_set", description="Set a secret")
         @app_commands.describe(key="Secret key", value="Secret value")

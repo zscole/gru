@@ -67,6 +67,10 @@ class Config:
     # Progress reports
     progress_report_interval: int = 0  # minutes between progress reports (0 = disabled)
 
+    # Smart notifications
+    stuck_threshold_turns: int = 5  # Alert if no tool calls for X turns
+    token_burn_alert: int = 50000  # Alert if agent uses more than X tokens
+
     # Webhook server
     webhook_enabled: bool = False
     webhook_host: str = "0.0.0.0"

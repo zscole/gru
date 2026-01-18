@@ -296,3 +296,414 @@ class TestConfigValidation:
         )
         errors = config.validate()
         assert any("At least one bot interface" in e for e in errors)
+
+
+# =============================================================================
+# Agent References Tests
+# =============================================================================
+
+
+class TestAgentReferences:
+    """Tests for agent number and nickname handling."""
+
+    def test_assign_agent_number(self, bot):
+        """Test assigning agent numbers."""
+        num1 = bot._assign_agent_number("agent1")
+        num2 = bot._assign_agent_number("agent2")
+        assert num1 == 1
+        assert num2 == 2
+        # Same agent should get same number
+        assert bot._assign_agent_number("agent1") == 1
+
+    def test_resolve_agent_ref_by_number(self, bot):
+        """Test resolving agent by number."""
+        bot._assign_agent_number("agent1")
+        assert bot._resolve_agent_ref("1") == "agent1"
+        assert bot._resolve_agent_ref("999") is None
+
+    def test_resolve_agent_ref_by_nickname(self, bot):
+        """Test resolving agent by nickname."""
+        bot._set_agent_nickname("agent1", "bugfixer")
+        assert bot._resolve_agent_ref("bugfixer") == "agent1"
+
+    def test_resolve_agent_ref_by_id(self, bot):
+        """Test resolving agent by full ID."""
+        assert bot._resolve_agent_ref("abc123") == "abc123"
+
+    def test_set_agent_nickname(self, bot):
+        """Test setting agent nickname."""
+        assert bot._set_agent_nickname("agent1", "tester") is True
+        assert bot._agent_nicknames["agent1"] == "tester"
+        assert bot._nickname_to_agent["tester"] == "agent1"
+
+    def test_set_agent_nickname_replace(self, bot):
+        """Test replacing agent nickname."""
+        bot._set_agent_nickname("agent1", "old_nick")
+        bot._set_agent_nickname("agent1", "new_nick")
+        assert bot._agent_nicknames["agent1"] == "new_nick"
+        assert "old_nick" not in bot._nickname_to_agent
+        assert bot._nickname_to_agent["new_nick"] == "agent1"
+
+    def test_set_agent_nickname_taken(self, bot):
+        """Test setting nickname that's taken by another agent."""
+        bot._set_agent_nickname("agent1", "nick")
+        result = bot._set_agent_nickname("agent2", "nick")
+        assert result is False
+        # Original mapping should remain
+        assert bot._nickname_to_agent["nick"] == "agent1"
+
+    def test_get_agent_display_with_number(self, bot):
+        """Test agent display with just number."""
+        bot._assign_agent_number("agent1")
+        assert bot._get_agent_display("agent1") == "[1]"
+
+    def test_get_agent_display_with_nickname(self, bot):
+        """Test agent display with number and nickname."""
+        bot._assign_agent_number("agent1")
+        bot._set_agent_nickname("agent1", "tester")
+        assert bot._get_agent_display("agent1") == "[1:tester]"
+
+    def test_get_agent_display_no_assignment(self, bot):
+        """Test agent display without any assignment."""
+        assert bot._get_agent_display("unknown") == "unknown"
+
+
+# =============================================================================
+# Button Callback Tests
+# =============================================================================
+
+
+class TestApproveButtonCallback:
+    """Tests for ApproveButton callback."""
+
+    @pytest.mark.asyncio
+    async def test_approve_button_expired(self, bot, mock_interaction):
+        """Test approve button when approval has expired."""
+        from gru.discord_bot import ApproveButton, ApprovalView
+
+        view = ApprovalView("test-approval", bot)
+        button = ApproveButton(view)
+
+        # No pending approval - simulates expired
+        await button.callback(mock_interaction)
+
+        mock_interaction.response.edit_message.assert_called_once()
+        args = mock_interaction.response.edit_message.call_args
+        assert "Expired" in args.kwargs["content"]
+
+    @pytest.mark.asyncio
+    async def test_approve_button_success(self, bot, mock_interaction, orchestrator):
+        """Test approve button success."""
+        from gru.discord_bot import ApproveButton, ApprovalView
+
+        view = ApprovalView("test-approval", bot)
+        button = ApproveButton(view)
+
+        # Set up pending approval
+        future = asyncio.get_event_loop().create_future()
+        bot._pending_approvals["test-approval"] = future
+
+        await button.callback(mock_interaction)
+
+        assert future.done()
+        assert future.result() == "Confirmed"
+        assert "test-approval" not in bot._pending_approvals
+        orchestrator.approve.assert_called_once_with("test-approval", approved=True)
+
+
+class TestRejectButtonCallback:
+    """Tests for RejectButton callback."""
+
+    @pytest.mark.asyncio
+    async def test_reject_button_expired(self, bot, mock_interaction):
+        """Test reject button when approval has expired."""
+        from gru.discord_bot import RejectButton, ApprovalView
+
+        view = ApprovalView("test-approval", bot)
+        button = RejectButton(view)
+
+        await button.callback(mock_interaction)
+
+        mock_interaction.response.edit_message.assert_called_once()
+        args = mock_interaction.response.edit_message.call_args
+        assert "Expired" in args.kwargs["content"]
+
+    @pytest.mark.asyncio
+    async def test_reject_button_success(self, bot, mock_interaction, orchestrator):
+        """Test reject button success."""
+        from gru.discord_bot import RejectButton, ApprovalView
+
+        view = ApprovalView("test-approval", bot)
+        button = RejectButton(view)
+
+        future = asyncio.get_event_loop().create_future()
+        bot._pending_approvals["test-approval"] = future
+
+        await button.callback(mock_interaction)
+
+        assert future.done()
+        assert future.result() is None
+        assert "test-approval" not in bot._pending_approvals
+        orchestrator.approve.assert_called_once_with("test-approval", approved=False)
+
+
+class TestOptionButtonCallback:
+    """Tests for OptionButton callback."""
+
+    @pytest.mark.asyncio
+    async def test_option_button_expired(self, bot, mock_interaction):
+        """Test option button when approval has expired."""
+        from gru.discord_bot import OptionButton, ApprovalView
+
+        options = ["Option A", "Option B"]
+        view = ApprovalView("test-approval", bot, options=options)
+        button = OptionButton(view, 0, "Option A")
+
+        await button.callback(mock_interaction)
+
+        mock_interaction.response.edit_message.assert_called_once()
+        args = mock_interaction.response.edit_message.call_args
+        assert "Expired" in args.kwargs["content"]
+
+    @pytest.mark.asyncio
+    async def test_option_button_success(self, bot, mock_interaction):
+        """Test option button selection success."""
+        from gru.discord_bot import OptionButton, ApprovalView
+
+        options = ["Option A", "Option B"]
+        view = ApprovalView("test-approval", bot, options=options)
+        button = OptionButton(view, 0, "Option A")
+
+        future = asyncio.get_event_loop().create_future()
+        bot._pending_approvals["test-approval"] = future
+
+        await button.callback(mock_interaction)
+
+        assert future.done()
+        assert future.result() == "Option A"
+        assert "test-approval" not in bot._pending_approvals
+
+
+# =============================================================================
+# Rate Limit Check Tests
+# =============================================================================
+
+
+class TestRateLimitCheck:
+    """Tests for rate limit checking in handlers."""
+
+    @pytest.mark.asyncio
+    async def test_check_rate_limit_exceeded(self, bot, mock_interaction):
+        """Test rate limit exceeded message."""
+        # Exhaust rate limit
+        for _ in range(25):
+            bot._rate_limiter.is_allowed(mock_interaction.user.id)
+
+        result = await bot._check_rate_limit(mock_interaction)
+        assert result is False
+        mock_interaction.response.send_message.assert_called_with(
+            "Rate limit exceeded. Please wait.", ephemeral=True
+        )
+
+    @pytest.mark.asyncio
+    async def test_check_rate_limit_allowed(self, bot, mock_interaction):
+        """Test rate limit check passes."""
+        result = await bot._check_rate_limit(mock_interaction)
+        assert result is True
+        mock_interaction.response.send_message.assert_not_called()
+
+
+# =============================================================================
+# Format Log Entry Tests
+# =============================================================================
+
+
+class TestFormatLogEntry:
+    """Tests for log entry formatting."""
+
+    def test_format_log_entry_string_content(self, bot):
+        """Test formatting string content."""
+        msg = {"role": "user", "content": "Hello world"}
+        result = bot._format_log_entry(msg)
+        assert "[user]" in result
+        assert "Hello world" in result
+
+    def test_format_log_entry_long_string_truncated(self, bot):
+        """Test long string content is truncated."""
+        msg = {"role": "assistant", "content": "x" * 300}
+        result = bot._format_log_entry(msg)
+        assert len(result) < 300
+
+    def test_format_log_entry_list_with_text(self, bot):
+        """Test formatting list content with text."""
+        msg = {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Some text here"}],
+        }
+        result = bot._format_log_entry(msg)
+        assert "[assistant]" in result
+        assert "Some text" in result
+
+    def test_format_log_entry_list_with_tool_use(self, bot):
+        """Test formatting list content with tool_use."""
+        msg = {
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "name": "bash", "input": {"command": "ls"}}
+            ],
+        }
+        result = bot._format_log_entry(msg)
+        assert "[tool]" in result
+        assert "bash" in result
+
+    def test_format_log_entry_list_with_tool_result(self, bot):
+        """Test formatting list content with tool_result."""
+        msg = {
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "content": "file.txt", "is_error": False}
+            ],
+        }
+        result = bot._format_log_entry(msg)
+        assert "[result]" in result
+
+    def test_format_log_entry_list_with_error_result(self, bot):
+        """Test formatting list content with error tool_result."""
+        msg = {
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "content": "Command failed", "is_error": True}
+            ],
+        }
+        result = bot._format_log_entry(msg)
+        assert "[error]" in result
+
+    def test_format_log_entry_empty_list(self, bot):
+        """Test formatting empty list content."""
+        msg = {"role": "assistant", "content": []}
+        result = bot._format_log_entry(msg)
+        assert "(empty)" in result
+
+    def test_format_log_entry_non_string_non_list(self, bot):
+        """Test formatting other content types."""
+        msg = {"role": "system", "content": {"key": "value"}}
+        result = bot._format_log_entry(msg)
+        assert "[system]" in result
+
+
+# =============================================================================
+# Summarize Tool Input Tests
+# =============================================================================
+
+
+class TestSummarizeToolInput:
+    """Tests for tool input summarization."""
+
+    def test_summarize_bash(self, bot):
+        """Test summarizing bash command."""
+        result = bot._summarize_tool_input("bash", {"command": "ls -la"})
+        assert "ls -la" in result
+
+    def test_summarize_bash_long_command(self, bot):
+        """Test summarizing long bash command is truncated."""
+        long_cmd = "x" * 50
+        result = bot._summarize_tool_input("bash", {"command": long_cmd})
+        assert "..." in result
+        assert len(result) < 50
+
+    def test_summarize_read_file(self, bot):
+        """Test summarizing read_file."""
+        result = bot._summarize_tool_input("read_file", {"path": "/test/file.txt"})
+        assert "/test/file.txt" in result
+
+    def test_summarize_write_file(self, bot):
+        """Test summarizing write_file."""
+        result = bot._summarize_tool_input("write_file", {"path": "/output.txt"})
+        assert "/output.txt" in result
+
+    def test_summarize_search_files(self, bot):
+        """Test summarizing search_files."""
+        result = bot._summarize_tool_input("search_files", {"pattern": "*.py"})
+        assert "*.py" in result
+
+    def test_summarize_unknown_tool(self, bot):
+        """Test summarizing unknown tool."""
+        result = bot._summarize_tool_input("custom_tool", {"arg1": "value1"})
+        assert "arg1" in result or "value1" in result
+
+
+# =============================================================================
+# Send Output Tests
+# =============================================================================
+
+
+class TestSendOutput:
+    """Tests for send_output method."""
+
+    @pytest.mark.asyncio
+    async def test_send_output_short_message(self, bot):
+        """Test sending a short message."""
+        channel = MagicMock()
+        channel.send = AsyncMock()
+
+        await bot.send_output(channel, "Hello world")
+
+        channel.send.assert_called_once_with("Hello world")
+
+    @pytest.mark.asyncio
+    async def test_send_output_force_file(self, bot):
+        """Test force sending as file."""
+        channel = MagicMock()
+        channel.send = AsyncMock()
+
+        await bot.send_output(channel, "Hello", filename="test.txt", force_file=True)
+
+        channel.send.assert_called_once()
+        # Check that file was sent
+        call_args = channel.send.call_args
+        assert "file" in call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_send_output_long_message_as_file(self, bot):
+        """Test long message sent as file."""
+        channel = MagicMock()
+        channel.send = AsyncMock()
+
+        # Create message longer than threshold
+        text = "x" * (bot.MAX_MESSAGE_LENGTH * bot.SPLIT_THRESHOLD + 1)
+        await bot.send_output(channel, text, filename="output.txt")
+
+        # Should send as file
+        call_args = channel.send.call_args
+        assert "file" in call_args.kwargs
+
+
+# =============================================================================
+# Additional Tests
+# =============================================================================
+
+
+class TestApprovalViewOptions:
+    """Tests for ApprovalView with options."""
+
+    @pytest.mark.asyncio
+    async def test_creates_option_buttons(self, bot):
+        """Test view creates option buttons with truncated labels."""
+        from gru.discord_bot import ApprovalView
+
+        long_option = "x" * 100
+        options = [long_option, "Short"]
+        view = ApprovalView("test", bot, options=options)
+
+        # Should have 3 buttons: 2 options + decline
+        assert len(view.children) == 3
+
+    @pytest.mark.asyncio
+    async def test_creates_standard_buttons(self, bot):
+        """Test view creates standard approve/reject buttons."""
+        from gru.discord_bot import ApprovalView
+
+        view = ApprovalView("test", bot, options=None)
+
+        # Should have 2 buttons: approve + reject
+        assert len(view.children) == 2

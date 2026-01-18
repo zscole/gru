@@ -255,6 +255,8 @@ class SlackBot:
                 "logs": self._cmd_logs,
                 "secret": self._cmd_secret,
                 "template": self._cmd_template,
+                "search": self._cmd_search,
+                "cost": self._cmd_cost,
             }
 
             handler = handlers.get(cmd)
@@ -269,7 +271,7 @@ class SlackBot:
 
 *Agent Management:*
 `/gru spawn <task>` - Spawn a new agent
-  Options: `--oneshot`, `--supervised`, `--unsupervised`, `--priority high|normal|low`, `--workdir /path`
+  Options: `--oneshot`, `--supervised`, `--unsupervised`, `--live`, `--priority high|normal|low`, `--workdir /path`
 `/gru status [agent_id]` - Show status
 `/gru list [running|paused|completed|failed]` - List agents
 `/gru pause <agent_id>` - Pause agent
@@ -277,6 +279,8 @@ class SlackBot:
 `/gru terminate <agent_id>` - Terminate agent
 `/gru nudge <agent_id> <message>` - Send message to agent
 `/gru logs <agent_id>` - Get conversation logs
+`/gru search <query>` - Search agents by task or name
+`/gru cost [agent_id]` - Show token usage and cost
 
 *Approvals:*
 `/gru pending` - Show pending approvals
@@ -307,7 +311,7 @@ Default workdir: `{self.config.default_workdir}`"""
         if not args:
             await self._respond(
                 respond,
-                "Usage: /gru spawn <task> [--oneshot] [--supervised] [--priority X] [--workdir /path]",
+                "Usage: /gru spawn <task> [--oneshot] [--supervised] [--live] [--priority X] [--workdir /path]",
             )
             return
 
@@ -317,6 +321,7 @@ Default workdir: `{self.config.default_workdir}`"""
         workdir = None
         timeout_mode = "block"
         oneshot = False
+        live_output = False
 
         i = 0
         while i < len(args):
@@ -330,6 +335,9 @@ Default workdir: `{self.config.default_workdir}`"""
                 oneshot = True
                 supervised = False
                 timeout_mode = "auto"
+                i += 1
+            elif args[i] == "--live":
+                live_output = True
                 i += 1
             elif args[i] == "--priority" and i + 1 < len(args):
                 priority = args[i + 1]
@@ -353,6 +361,7 @@ Default workdir: `{self.config.default_workdir}`"""
                 priority=priority,
                 workdir=workdir,
                 timeout_mode=timeout_mode,
+                live_output=live_output,
             )
         except ValueError as e:
             await self._respond(respond, f"Error: {e}")
@@ -624,6 +633,75 @@ Default workdir: `{self.config.default_workdir}`"""
 
         else:
             await self._respond(respond, "Usage: /gru template <save|list|use|delete> ...")
+
+    async def _cmd_search(self, respond: Any, args: list[str], user_id: str) -> None:
+        """Search agents by task, name, or id."""
+        if not args:
+            await self._respond(respond, "Usage: /gru search <query>")
+            return
+
+        query = " ".join(args)
+        results = await self.orchestrator.search_agents(query)
+
+        if not results:
+            await self._respond(respond, f"No agents found matching '{query}'")
+            return
+
+        lines = []
+        for agent in results[:10]:
+            tokens = agent.get("input_tokens", 0) + agent.get("output_tokens", 0)
+            token_str = f" ({tokens:,} tokens)" if tokens else ""
+            lines.append(f"`{agent['id']}` [{agent['status']}] {agent['task'][:40]}...{token_str}")
+
+        await self._respond(respond, f"*Search results for '{query}':*\n" + "\n".join(lines))
+
+    async def _cmd_cost(self, respond: Any, args: list[str], user_id: str) -> None:
+        """Show token usage and cost for an agent or all agents."""
+        if args:
+            agent_id = self._resolve_agent_ref(args[0]) or args[0]
+            cost_info = self.orchestrator.get_agent_cost(agent_id)
+            if not cost_info:
+                cost_info = await self.orchestrator.get_agent_cost_from_db(agent_id)
+            if not cost_info:
+                await self._respond(respond, f"Agent not found: {args[0]}")
+                return
+            input_tokens, output_tokens, cost_str = cost_info
+            total = input_tokens + output_tokens
+            await self._respond(
+                respond,
+                f"*Agent {agent_id}*\n"
+                f"Input tokens: {input_tokens:,}\n"
+                f"Output tokens: {output_tokens:,}\n"
+                f"Total tokens: {total:,}\n"
+                f"Estimated cost: {cost_str}",
+            )
+        else:
+            agents = await self.orchestrator.list_agents()
+            total_input = 0
+            total_output = 0
+            lines = []
+
+            for agent in agents[:20]:
+                inp = agent.get("input_tokens", 0)
+                out = agent.get("output_tokens", 0)
+                total_input += inp
+                total_output += out
+                if inp or out:
+                    cost_info = self.orchestrator.get_agent_cost(agent["id"])
+                    if not cost_info:
+                        cost_info = await self.orchestrator.get_agent_cost_from_db(agent["id"])
+                    if cost_info:
+                        _, _, cost_str = cost_info
+                        lines.append(f"`{agent['id'][:8]}` [{agent['status']}] {inp + out:,} tokens ({cost_str})")
+
+            await self._respond(
+                respond,
+                f"*Token Usage Summary*\n"
+                f"Total input: {total_input:,}\n"
+                f"Total output: {total_output:,}\n"
+                f"Total: {total_input + total_output:,}\n\n"
+                + ("\n".join(lines) if lines else "No token usage recorded"),
+            )
 
     def _register_actions(self) -> None:
         """Register interactive component handlers."""

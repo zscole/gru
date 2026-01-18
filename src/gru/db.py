@@ -41,6 +41,9 @@ class Database:
         # Migrate existing databases: add worktree columns if missing
         await self._migrate_worktree_columns()
 
+        # Set up FTS table and triggers
+        await self._migrate_fts()
+
         await self._conn.commit()
 
     async def _migrate_worktree_columns(self) -> None:
@@ -56,12 +59,57 @@ class Database:
             ("worktree_path", "ALTER TABLE agents ADD COLUMN worktree_path TEXT"),
             ("worktree_branch", "ALTER TABLE agents ADD COLUMN worktree_branch TEXT"),
             ("base_repo", "ALTER TABLE agents ADD COLUMN base_repo TEXT"),
+            ("input_tokens", "ALTER TABLE agents ADD COLUMN input_tokens INTEGER DEFAULT 0"),
+            ("output_tokens", "ALTER TABLE agents ADD COLUMN output_tokens INTEGER DEFAULT 0"),
+            ("live_output", "ALTER TABLE agents ADD COLUMN live_output INTEGER DEFAULT 0"),
         ]
 
         for col_name, sql in migrations:
             if col_name not in columns:
                 with contextlib.suppress(Exception):
                     await self._conn.execute(sql)
+
+    async def _migrate_fts(self) -> None:
+        """Set up full-text search for agents table."""
+        if not self._conn:
+            return
+
+        # Create FTS table if not exists
+        with contextlib.suppress(Exception):
+            await self._conn.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS agents_fts USING fts5(
+                    id, name, task,
+                    content='agents',
+                    content_rowid='rowid'
+                )
+            """)
+
+        # Create triggers to keep FTS in sync (wrapped in try/except for idempotency)
+        triggers = [
+            """
+            CREATE TRIGGER IF NOT EXISTS agents_ai AFTER INSERT ON agents BEGIN
+                INSERT INTO agents_fts(rowid, id, name, task)
+                VALUES (NEW.rowid, NEW.id, NEW.name, NEW.task);
+            END
+            """,
+            """
+            CREATE TRIGGER IF NOT EXISTS agents_ad AFTER DELETE ON agents BEGIN
+                INSERT INTO agents_fts(agents_fts, rowid, id, name, task)
+                VALUES('delete', OLD.rowid, OLD.id, OLD.name, OLD.task);
+            END
+            """,
+            """
+            CREATE TRIGGER IF NOT EXISTS agents_au AFTER UPDATE ON agents BEGIN
+                INSERT INTO agents_fts(agents_fts, rowid, id, name, task)
+                VALUES('delete', OLD.rowid, OLD.id, OLD.name, OLD.task);
+                INSERT INTO agents_fts(rowid, id, name, task)
+                VALUES (NEW.rowid, NEW.id, NEW.name, NEW.task);
+            END
+            """,
+        ]
+        for trigger_sql in triggers:
+            with contextlib.suppress(Exception):
+                await self._conn.execute(trigger_sql)
 
     async def close(self) -> None:
         """Close database connection."""
@@ -177,6 +225,46 @@ class Database:
         values = list(fields.values()) + [agent_id]
         await self.execute(f"UPDATE agents SET {set_clause} WHERE id = ?", tuple(values))
         await self.commit()
+
+    async def add_tokens(self, agent_id: str, input_tokens: int, output_tokens: int) -> None:
+        """Add token usage to agent."""
+        await self.execute(
+            """
+            UPDATE agents SET
+                input_tokens = input_tokens + ?,
+                output_tokens = output_tokens + ?
+            WHERE id = ?
+            """,
+            (input_tokens, output_tokens, agent_id),
+        )
+        await self.commit()
+
+    async def search_agents(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
+        """Search agents by task, name, or id."""
+        # Try FTS first, fall back to LIKE if FTS table doesn't exist
+        try:
+            return await self.fetchall(
+                """
+                SELECT a.* FROM agents a
+                JOIN agents_fts fts ON a.id = fts.id
+                WHERE agents_fts MATCH ?
+                ORDER BY a.created_at DESC
+                LIMIT ?
+                """,
+                (query, limit),
+            )
+        except Exception:
+            # Fall back to LIKE search
+            like_query = f"%{query}%"
+            return await self.fetchall(
+                """
+                SELECT * FROM agents
+                WHERE id LIKE ? OR name LIKE ? OR task LIKE ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (like_query, like_query, like_query, limit),
+            )
 
     async def delete_agent(self, agent_id: str) -> bool:
         """Delete an agent."""

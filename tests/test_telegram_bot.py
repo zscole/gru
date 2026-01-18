@@ -978,3 +978,317 @@ class TestLogsCommand:
 
         await bot._cmd_logs(mock_update, ["agent1"])
         bot._app.bot.send_message.assert_called()
+
+
+# =============================================================================
+# RateLimiter Tests
+# =============================================================================
+
+
+class TestRateLimiter:
+    """Tests for RateLimiter class."""
+
+    def test_rate_limiter_allows_initial_requests(self):
+        """Test rate limiter allows initial requests."""
+        from gru.telegram_bot import RateLimiter
+        limiter = RateLimiter(max_requests=5, window_seconds=60)
+        for _ in range(5):
+            assert limiter.is_allowed(123) is True
+
+    def test_rate_limiter_blocks_excess_requests(self):
+        """Test rate limiter blocks excess requests."""
+        from gru.telegram_bot import RateLimiter
+        limiter = RateLimiter(max_requests=3, window_seconds=60)
+        # First 3 should pass
+        assert limiter.is_allowed(123) is True
+        assert limiter.is_allowed(123) is True
+        assert limiter.is_allowed(123) is True
+        # 4th should fail
+        assert limiter.is_allowed(123) is False
+
+    def test_rate_limiter_tracks_separate_users(self):
+        """Test rate limiter tracks users separately."""
+        from gru.telegram_bot import RateLimiter
+        limiter = RateLimiter(max_requests=2, window_seconds=60)
+        assert limiter.is_allowed(111) is True
+        assert limiter.is_allowed(111) is True
+        assert limiter.is_allowed(111) is False
+        # Different user should still be allowed
+        assert limiter.is_allowed(222) is True
+
+    def test_rate_limiter_cleanup_triggered(self):
+        """Test rate limiter cleanup is triggered."""
+        from gru.telegram_bot import RateLimiter
+        limiter = RateLimiter(max_requests=5, window_seconds=60)
+        # Add many users to trigger cleanup
+        for i in range(limiter.CLEANUP_THRESHOLD + 10):
+            limiter.is_allowed(i)
+        # Should still function correctly
+        assert limiter.is_allowed(1) is True
+
+
+# =============================================================================
+# Agent References Tests
+# =============================================================================
+
+
+class TestAgentReferences:
+    """Tests for agent number and nickname handling."""
+
+    def test_assign_agent_number(self, bot):
+        """Test assigning agent numbers."""
+        num1 = bot._assign_agent_number("agent1")
+        num2 = bot._assign_agent_number("agent2")
+        assert num1 == 1
+        assert num2 == 2
+        # Same agent should get same number
+        assert bot._assign_agent_number("agent1") == 1
+
+    def test_resolve_agent_ref_by_number(self, bot):
+        """Test resolving agent by number."""
+        bot._assign_agent_number("agent1")
+        assert bot._resolve_agent_ref("1") == "agent1"
+        assert bot._resolve_agent_ref("999") is None
+
+    def test_resolve_agent_ref_by_nickname(self, bot):
+        """Test resolving agent by nickname."""
+        bot._set_agent_nickname("agent1", "bugfixer")
+        assert bot._resolve_agent_ref("bugfixer") == "agent1"
+
+    def test_resolve_agent_ref_by_id(self, bot):
+        """Test resolving agent by full ID."""
+        assert bot._resolve_agent_ref("abc123") == "abc123"
+
+    def test_set_agent_nickname(self, bot):
+        """Test setting agent nickname."""
+        assert bot._set_agent_nickname("agent1", "tester") is True
+        assert bot._agent_nicknames["agent1"] == "tester"
+        assert bot._nickname_to_agent["tester"] == "agent1"
+
+    def test_set_agent_nickname_replace(self, bot):
+        """Test replacing agent nickname."""
+        bot._set_agent_nickname("agent1", "old_nick")
+        bot._set_agent_nickname("agent1", "new_nick")
+        assert bot._agent_nicknames["agent1"] == "new_nick"
+        assert "old_nick" not in bot._nickname_to_agent
+        assert bot._nickname_to_agent["new_nick"] == "agent1"
+
+    def test_set_agent_nickname_taken(self, bot):
+        """Test setting nickname that's taken by another agent."""
+        bot._set_agent_nickname("agent1", "nick")
+        result = bot._set_agent_nickname("agent2", "nick")
+        assert result is False
+        # Original mapping should remain
+        assert bot._nickname_to_agent["nick"] == "agent1"
+
+    def test_get_agent_display_with_number(self, bot):
+        """Test agent display with just number."""
+        bot._assign_agent_number("agent1")
+        assert bot._get_agent_display("agent1") == "[1]"
+
+    def test_get_agent_display_with_nickname(self, bot):
+        """Test agent display with number and nickname."""
+        bot._assign_agent_number("agent1")
+        bot._set_agent_nickname("agent1", "tester")
+        assert bot._get_agent_display("agent1") == "[1:tester]"
+
+    def test_get_agent_display_no_assignment(self, bot):
+        """Test agent display without any assignment."""
+        assert bot._get_agent_display("unknown") == "unknown"
+
+
+# =============================================================================
+# Rate Limit Check Tests
+# =============================================================================
+
+
+class TestRateLimitCheck:
+    """Tests for rate limit checking in handlers."""
+
+    @pytest.mark.asyncio
+    async def test_check_rate_limit_no_user(self, bot, mock_update):
+        """Test rate limit check with no user."""
+        mock_update.effective_user = None
+        result = await bot._check_rate_limit(mock_update)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_check_rate_limit_exceeded(self, bot, mock_update):
+        """Test rate limit exceeded message."""
+        # Exhaust rate limit
+        for _ in range(25):
+            bot._rate_limiter.is_allowed(mock_update.effective_user.id)
+
+        result = await bot._check_rate_limit(mock_update)
+        assert result is False
+        mock_update.message.reply_text.assert_called_with("Rate limit exceeded. Please wait.")
+
+
+# =============================================================================
+# Send Output Extended Tests
+# =============================================================================
+
+
+class TestSendOutputExtended:
+    """Extended tests for send_output."""
+
+    @pytest.mark.asyncio
+    async def test_send_output_split_messages(self, bot):
+        """Test send_output splits into multiple messages."""
+        bot._app = MagicMock()
+        bot._app.bot = MagicMock()
+        bot._app.bot.send_message = AsyncMock()
+
+        # Create text that needs splitting into 2 chunks
+        text = "x" * (bot.MAX_MESSAGE_LENGTH + 100)
+        await bot.send_output(123, text)
+
+        # Should have called send_message multiple times
+        assert bot._app.bot.send_message.call_count >= 2
+
+    @pytest.mark.asyncio
+    async def test_send_output_many_chunks_as_file(self, bot):
+        """Test send_output sends file for many chunks."""
+        bot._app = MagicMock()
+        bot._app.bot = MagicMock()
+        bot._app.bot.send_message = AsyncMock()
+        bot._app.bot.send_document = AsyncMock()
+
+        # Create text that would need many chunks but exceeds threshold
+        text = "x\n" * (bot.MAX_MESSAGE_LENGTH * 5)
+        await bot.send_output(123, text, filename="output.txt")
+
+        # Should send as document
+        bot._app.bot.send_document.assert_called_once()
+
+
+# =============================================================================
+# Additional Command Tests
+# =============================================================================
+
+
+class TestSearchCommand:
+    """Tests for search command."""
+
+    @pytest.mark.asyncio
+    async def test_search_no_args(self, bot, mock_update):
+        """Test search without query."""
+        await bot._cmd_search(mock_update, [])
+        args = mock_update.message.reply_text.call_args[0][0]
+        assert "Usage:" in args
+
+    @pytest.mark.asyncio
+    async def test_search_with_results(self, bot, mock_update, orchestrator):
+        """Test search with results."""
+        orchestrator.search_agents = AsyncMock(return_value=[
+            {"id": "agent1", "status": "running", "task": "Fix bug"},
+        ])
+        await bot._cmd_search(mock_update, ["bug"])
+        orchestrator.search_agents.assert_called_once_with("bug")
+        args = mock_update.message.reply_text.call_args[0][0]
+        assert "agent1" in args
+
+
+class TestCostCommand:
+    """Tests for cost command."""
+
+    @pytest.mark.asyncio
+    async def test_cost_no_args_no_running(self, bot, mock_update, orchestrator):
+        """Test cost without agent ID and no running agents."""
+        await bot._cmd_cost(mock_update, [])
+        args = mock_update.message.reply_text.call_args[0][0]
+        assert "No running agents" in args
+
+    @pytest.mark.asyncio
+    async def test_cost_no_args_with_running(self, bot, mock_update, orchestrator):
+        """Test cost without agent ID with running agents."""
+        orchestrator.list_agents.return_value = [
+            {"id": "agent1", "status": "running", "input_tokens": 1000, "output_tokens": 500}
+        ]
+        bot._assign_agent_number("agent1")
+        await bot._cmd_cost(mock_update, [])
+        args = mock_update.message.reply_text.call_args[0][0]
+        assert "1,500" in args
+
+    @pytest.mark.asyncio
+    async def test_cost_active_agent(self, bot, mock_update, orchestrator):
+        """Test cost for active agent."""
+        orchestrator.get_agent_cost = MagicMock(return_value=(1000, 500, "0.0075"))
+        await bot._cmd_cost(mock_update, ["agent1"])
+        args = mock_update.message.reply_text.call_args[0][0]
+        assert "1,000" in args or "1000" in args
+        assert "$0.0075" in args
+
+    @pytest.mark.asyncio
+    async def test_cost_from_db(self, bot, mock_update, orchestrator):
+        """Test cost for inactive agent from DB."""
+        orchestrator.get_agent_cost = MagicMock(return_value=None)
+        orchestrator.get_agent_cost_from_db = AsyncMock(return_value=(2000, 1000, "0.0150"))
+        await bot._cmd_cost(mock_update, ["agent1"])
+        args = mock_update.message.reply_text.call_args[0][0]
+        assert "$0.0150" in args
+
+    @pytest.mark.asyncio
+    async def test_cost_agent_not_found(self, bot, mock_update, orchestrator):
+        """Test cost for agent not found."""
+        orchestrator.get_agent_cost = MagicMock(return_value=None)
+        orchestrator.get_agent_cost_from_db = AsyncMock(return_value=None)
+        await bot._cmd_cost(mock_update, ["unknown"])
+        args = mock_update.message.reply_text.call_args[0][0]
+        assert "not found" in args
+
+
+class TestResumeCommand:
+    """Tests for resume command."""
+
+    @pytest.mark.asyncio
+    async def test_resume_no_args(self, bot, mock_update):
+        """Test resume without agent ID."""
+        await bot._cmd_resume(mock_update, [])
+        args = mock_update.message.reply_text.call_args[0][0]
+        assert "Usage:" in args
+
+    @pytest.mark.asyncio
+    async def test_resume_failure(self, bot, mock_update, orchestrator):
+        """Test failed resume."""
+        orchestrator.resume_agent.return_value = False
+        await bot._cmd_resume(mock_update, ["agent1"])
+        args = mock_update.message.reply_text.call_args[0][0]
+        assert "Could not resume" in args
+
+
+class TestTerminateCommand:
+    """Tests for terminate command."""
+
+    @pytest.mark.asyncio
+    async def test_terminate_no_args(self, bot, mock_update):
+        """Test terminate without agent ID."""
+        await bot._cmd_terminate(mock_update, [])
+        args = mock_update.message.reply_text.call_args[0][0]
+        assert "Usage:" in args
+
+    @pytest.mark.asyncio
+    async def test_terminate_failure(self, bot, mock_update, orchestrator):
+        """Test failed terminate."""
+        orchestrator.terminate_agent.return_value = False
+        await bot._cmd_terminate(mock_update, ["agent1"])
+        args = mock_update.message.reply_text.call_args[0][0]
+        assert "Could not terminate" in args
+
+
+class TestSpawnLiveOutput:
+    """Tests for spawn with live output."""
+
+    @pytest.mark.asyncio
+    async def test_spawn_live_output(self, bot, mock_update, orchestrator):
+        """Test spawn with --live flag."""
+        await bot._cmd_spawn(mock_update, ["--live", "run", "tests"])
+        call_kwargs = orchestrator.spawn_agent.call_args.kwargs
+        assert call_kwargs.get("live_output") is True
+
+    @pytest.mark.asyncio
+    async def test_spawn_no_live_output(self, bot, mock_update, orchestrator):
+        """Test spawn without --live flag."""
+        await bot._cmd_spawn(mock_update, ["run", "tests"])
+        call_kwargs = orchestrator.spawn_agent.call_args.kwargs
+        assert call_kwargs.get("live_output", False) is False

@@ -14,6 +14,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import anthropic
+
 from gru.claude import DEFAULT_TOOLS, ClaudeClient, Response, ToolResult
 from gru.coordinator import Coordinator
 from gru.mcp import MCPClient
@@ -63,6 +65,12 @@ class Agent:
         self._turn_count: int = 0
         self._last_report_time: datetime | None = None
         self._recent_tools: list[str] = []  # Track recent tool calls for progress reports
+        self._turns_since_tool: int = 0  # Track turns without tool calls for stuck detection
+        self._total_input_tokens: int = 0
+        self._total_output_tokens: int = 0
+        self._token_alert_sent: bool = False
+        self._stuck_alert_sent: bool = False
+        self.live_output: bool = False  # Stream output to chat in real-time
 
     def cancel(self) -> None:
         """Mark agent as cancelled."""
@@ -114,6 +122,41 @@ class Agent:
     def add_tool_call(self, tool_name: str, summary: str) -> None:
         """Track a tool call for progress reporting."""
         self._recent_tools.append(f"{tool_name}: {summary}")
+        self._turns_since_tool = 0  # Reset stuck counter
+
+    def increment_turns_since_tool(self) -> None:
+        """Increment turns without tool calls."""
+        self._turns_since_tool += 1
+
+    def is_stuck(self, threshold: int) -> bool:
+        """Check if agent appears stuck (no tool calls for threshold turns)."""
+        return threshold > 0 and self._turns_since_tool >= threshold
+
+    def add_tokens(self, input_tokens: int, output_tokens: int) -> None:
+        """Add token usage."""
+        self._total_input_tokens += input_tokens
+        self._total_output_tokens += output_tokens
+
+    @property
+    def total_tokens(self) -> int:
+        """Get total tokens used."""
+        return self._total_input_tokens + self._total_output_tokens
+
+    def should_alert_token_burn(self, threshold: int) -> bool:
+        """Check if token usage exceeds threshold and alert not yet sent."""
+        if self._token_alert_sent or threshold <= 0:
+            return False
+        if self.total_tokens >= threshold:
+            self._token_alert_sent = True
+            return True
+        return False
+
+    def should_alert_stuck(self, threshold: int) -> bool:
+        """Check if stuck and alert not yet sent."""
+        if self._stuck_alert_sent or not self.is_stuck(threshold):
+            return False
+        self._stuck_alert_sent = True
+        return True
 
     def get_progress_summary(self) -> str:
         """Generate a progress summary."""
@@ -185,6 +228,21 @@ class Orchestrator:
             except Exception as e:
                 logger.error(f"Notify error: {e}")
 
+    def _estimate_cost(self, agent: Agent) -> str:
+        """Estimate cost for an agent based on token usage and model."""
+        # Pricing per 1M tokens (as of 2024)
+        pricing = {
+            "claude-sonnet-4-20250514": {"input": 3.0, "output": 15.0},
+            "claude-opus-4-20250514": {"input": 15.0, "output": 75.0},
+            "claude-3-5-sonnet-20241022": {"input": 3.0, "output": 15.0},
+            "claude-3-opus-20240229": {"input": 15.0, "output": 75.0},
+            "claude-3-haiku-20240307": {"input": 0.25, "output": 1.25},
+        }
+        rates = pricing.get(agent.model, {"input": 3.0, "output": 15.0})
+        input_cost = (agent._total_input_tokens / 1_000_000) * rates["input"]
+        output_cost = (agent._total_output_tokens / 1_000_000) * rates["output"]
+        return f"{input_cost + output_cost:.4f}"
+
     async def spawn_agent(
         self,
         task: str,
@@ -196,6 +254,7 @@ class Orchestrator:
         priority: str = "normal",
         deadline: str | None = None,
         workdir: str | None = None,
+        live_output: bool = False,
     ) -> dict[str, Any]:
         """Spawn a new agent."""
         # Validate task length
@@ -273,6 +332,7 @@ class Orchestrator:
             orchestrator=self,
             worktree_info=worktree_info,
         )
+        agent.live_output = live_output
         self._agents[agent_id] = agent
 
         # Queue for execution
@@ -420,12 +480,27 @@ class Orchestrator:
 
                 # Get response from Claude (include MCP tools)
                 all_tools = DEFAULT_TOOLS + self.mcp.get_all_tools()
-                response = await self.claude.send_message(
-                    messages=truncated_messages,
-                    system=system_prompt,
-                    model=agent.model,
-                    tools=all_tools,
-                )
+                try:
+                    response = await self.claude.send_message(
+                        messages=truncated_messages,
+                        system=system_prompt,
+                        model=agent.model,
+                        tools=all_tools,
+                    )
+                except anthropic.RateLimitError as e:
+                    await self.notify(agent.id, f"Rate limited: {e}. Retrying...")
+                    raise
+
+                # Track token usage
+                agent.add_tokens(response.usage["input_tokens"], response.usage["output_tokens"])
+                await self.db.add_tokens(agent.id, response.usage["input_tokens"], response.usage["output_tokens"])
+
+                # Check for token burn alert
+                if agent.should_alert_token_burn(self.config.token_burn_alert):
+                    await self.notify(
+                        agent.id,
+                        f"High token usage: {agent.total_tokens:,} tokens (~${self._estimate_cost(agent)})",
+                    )
 
                 # Store assistant response
                 tool_use_data = None
@@ -446,6 +521,12 @@ class Orchestrator:
                 if response.tool_uses:
                     # Handle tool uses
                     tool_results = await self._handle_tool_uses(agent, response, task_id)
+
+                    # Live output: send tool calls to chat
+                    if agent.live_output:
+                        for tu in response.tool_uses:
+                            summary = self._summarize_tool_input(tu.name, tu.input)
+                            await self.notify(agent.id, f"[{tu.name}] {summary}")
 
                     # Add assistant message and tool results to conversation
                     assistant_content: list[dict[str, Any]] = []
@@ -475,6 +556,13 @@ class Orchestrator:
                         )
                     agent.messages.append({"role": "user", "content": tool_result_content})
                 else:
+                    # No tool uses - track for stuck detection
+                    agent.increment_turns_since_tool()
+                    if agent.should_alert_stuck(self.config.stuck_threshold_turns):
+                        await self.notify(
+                            agent.id,
+                            f"Agent may be stuck: {agent._turns_since_tool} turns without tool calls",
+                        )
                     agent.messages.append({"role": "assistant", "content": response.content})
 
             # Mark completed
@@ -882,3 +970,37 @@ class Orchestrator:
             },
             "scheduler": scheduler_status,
         }
+
+    async def search_agents(self, query: str) -> list[dict[str, Any]]:
+        """Search agents by task, name, or id."""
+        return await self.db.search_agents(query)
+
+    def get_agent_cost(self, agent_id: str) -> tuple[int, int, str] | None:
+        """Get token usage and cost for an agent."""
+        agent = self._agents.get(agent_id)
+        if agent:
+            cost = self._estimate_cost(agent)
+            return agent._total_input_tokens, agent._total_output_tokens, cost
+        return None
+
+    async def get_agent_cost_from_db(self, agent_id: str) -> tuple[int, int, str] | None:
+        """Get token usage and cost for an agent from database."""
+        agent_data = await self.db.get_agent(agent_id)
+        if agent_data:
+            input_tokens = agent_data.get("input_tokens", 0) or 0
+            output_tokens = agent_data.get("output_tokens", 0) or 0
+            # Create temporary agent for cost calculation
+            pricing = {
+                "claude-sonnet-4-20250514": {"input": 3.0, "output": 15.0},
+                "claude-opus-4-20250514": {"input": 15.0, "output": 75.0},
+                "claude-3-5-sonnet-20241022": {"input": 3.0, "output": 15.0},
+                "claude-3-opus-20240229": {"input": 15.0, "output": 75.0},
+                "claude-3-haiku-20240307": {"input": 0.25, "output": 1.25},
+            }
+            model = agent_data.get("model", "claude-sonnet-4-20250514")
+            rates = pricing.get(model, {"input": 3.0, "output": 15.0})
+            input_cost = (input_tokens / 1_000_000) * rates["input"]
+            output_cost = (output_tokens / 1_000_000) * rates["output"]
+            cost = f"{input_cost + output_cost:.4f}"
+            return input_tokens, output_tokens, cost
+        return None
