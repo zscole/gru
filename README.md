@@ -6,6 +6,8 @@
 
 AI agents you can control from your phone. Message a bot, get a coding assistant.
 
+Just tell it what to build. Send screenshots of UI designs. Use voice notes. Get live preview URLs.
+
 ## Quick Start
 
 **Step 1:** Get your API keys (5 min)
@@ -27,12 +29,17 @@ Click the button above, then paste your 3 keys:
 
 **Step 3:** Start chatting
 
-Open Telegram, search for the bot username you created (e.g., `@my_gru_bot`), and send:
+Open Telegram, find your bot, and just tell it what you want:
 ```
-/gru spawn write a hello world script in python
+Build me a landing page for a coffee shop
 ```
 
-Done. You now have AI agents on your phone.
+Or use quick-start templates:
+```
+/gru create landing-page
+```
+
+That's it. You now have AI agents on your phone.
 
 *Need help creating a Telegram bot? See the [detailed Telegram setup guide](#telegram-setup-recommended).*
 
@@ -47,6 +54,41 @@ Done. You now have AI agents on your phone.
 ## What is Gru?
 
 Gru lets you spawn and control Claude-powered AI agents from your phone. Agents can run commands, read/write files, and work on coding tasks autonomously. Think of it as a coding assistant you can message from anywhere.
+
+## Features
+
+**Talk naturally** - Just describe what you want. No commands needed.
+```
+Build me a REST API with user authentication
+```
+
+**Send screenshots** - Send a photo of any UI design, Gru builds it.
+
+**Voice notes** - Send a voice message describing your task.
+
+**Project templates** - Quick-start common projects:
+```
+/gru create react-app
+/gru create landing-page
+/gru create express-api
+```
+
+**Live preview** - Deploy to Vercel, Netlify, or Surge:
+```
+/gru deploy vercel
+```
+
+**Health check** - Diagnose setup issues:
+```
+/gru doctor
+```
+
+**Progress tracking** - Visual progress bar shows agent status:
+```
+[=====---------] ~35%
+Turn 12 | 3m | 15,234 tokens
+Recent: bash, write_file, read_file
+```
 
 ---
 
@@ -322,6 +364,9 @@ GRU_DEFAULT_MODEL=claude-sonnet-4-20250514
 GRU_MAX_TOKENS=8192
 GRU_DEFAULT_TIMEOUT=300
 GRU_MAX_AGENTS=10
+
+# GitHub access for private repos (optional)
+GRU_GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 **Example with Telegram only:**
@@ -376,6 +421,7 @@ GRU_SLACK_ADMIN_IDS=U01ABC123DE
 | `GRU_SLACK_APP_TOKEN` | If using Slack | Your App-Level Token for Socket Mode (`xapp-...`) |
 | `GRU_SLACK_ADMIN_IDS` | If using Slack | Your Slack user ID(s), comma-separated |
 | `GRU_MASTER_PASSWORD` | No | Password for encrypting stored secrets |
+| `GRU_GITHUB_TOKEN` | No | GitHub personal access token for private repos |
 | `GRU_DATA_DIR` | No | Where Gru stores its database (default: `~/.gru`) |
 | `GRU_WORKDIR` | No | Default directory for agents to work in (default: `~/gru-workspace`) |
 | `GRU_DEFAULT_MODEL` | No | Claude model to use (default: `claude-sonnet-4-20250514`) |
@@ -480,6 +526,39 @@ check on my agents
 
 Gru understands what you want and either spawns an agent or answers directly.
 
+### Send Screenshots
+
+Send a photo of any UI design (mockup, website screenshot, hand-drawn sketch) and Gru will build it. Add a caption for specific instructions:
+
+1. Take a screenshot or photo of a UI you like
+2. Send it to the bot with an optional caption like "Use React and Tailwind"
+3. Gru spawns an agent that analyzes the image and recreates it in code
+
+### Send Voice Notes
+
+Too lazy to type? Send a voice message:
+
+1. Hold the microphone button in Telegram
+2. Describe what you want built
+3. Gru transcribes it and spawns an agent
+
+### Project Templates
+
+Quick-start common project types:
+
+| Template | What it creates |
+|----------|-----------------|
+| `react-app` | React + TypeScript + Tailwind |
+| `next-app` | Next.js 14 with app router |
+| `express-api` | Express + TypeScript + JWT auth |
+| `fastapi` | FastAPI + SQLAlchemy + Pydantic |
+| `landing-page` | Responsive landing page |
+| `cli-tool` | Python CLI with Click |
+| `discord-bot` | Discord.py bot |
+| `chrome-extension` | Chrome extension (Manifest v3) |
+
+Usage: `/gru create <template>` or `/gru create <template> --workdir /path`
+
 ### Commands Reference
 
 Commands work the same across all platforms. On Telegram, use `/gru <command>`. On Discord and Slack, use the `/gru` slash command.
@@ -488,6 +567,14 @@ Commands work the same across all platforms. On Telegram, use `/gru <command>`. 
 
 All commands start with `/gru`:
 
+**Quick Start:**
+```
+/gru examples                      Show copy-paste example tasks
+/gru create <template>             Create from template (react-app, landing-page, etc.)
+/gru doctor                        Health check - verify setup is working
+/gru setup                         Guided setup help
+```
+
 **Spawning Agents:**
 ```
 /gru spawn <task>                  Start an agent (supervised mode)
@@ -495,6 +582,13 @@ All commands start with `/gru`:
 /gru spawn <task> --oneshot        Fire and forget
 /gru spawn <task> --workdir /path  Work in specific directory
 /gru spawn <task> --priority high  Set priority (high/normal/low)
+```
+
+**Deploy:**
+```
+/gru deploy vercel                 Deploy to Vercel
+/gru deploy netlify                Deploy to Netlify
+/gru deploy surge                  Deploy to Surge.sh (free)
 ```
 
 **Managing Agents:**
