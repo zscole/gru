@@ -605,7 +605,8 @@ class TestAgent:
         agent._turn_count = 5
         summary = agent.get_progress_summary()
         assert "Turn 5" in summary
-        assert "running for 0m" in summary
+        assert "0m" in summary  # runtime
+        assert "[" in summary and "]" in summary  # progress bar
 
     def test_get_progress_summary_with_tools(self, agent):
         """Test progress summary with recent tool calls."""
@@ -615,7 +616,7 @@ class TestAgent:
         summary = agent.get_progress_summary()
         assert "Turn 10" in summary
         assert "Recent:" in summary
-        assert "bash: ls" in summary
+        assert "write_file: out.txt" in summary  # Last 3 tools shown
 
 
 # =============================================================================

@@ -204,11 +204,12 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_cmd_start(self, bot, mock_update, mock_context):
-        """Test /start command."""
+        """Test /start command shows welcome message."""
         await bot.cmd_start(mock_update, mock_context)
         mock_update.message.reply_text.assert_called_once()
         args = mock_update.message.reply_text.call_args[0][0]
-        assert "Gru orchestrator ready" in args
+        assert "Welcome to Gru" in args
+        assert "/gru examples" in args
 
     @pytest.mark.asyncio
     async def test_cmd_start_unauthorized(self, bot, mock_update, mock_context):

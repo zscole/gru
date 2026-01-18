@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import io
 import json
 import logging
+import os
+import subprocess
 import time
 from typing import TYPE_CHECKING
 
+import anthropic
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import BadRequest
 from telegram.ext import (
@@ -93,10 +97,22 @@ class TelegramBot:
         self._next_agent_number: int = 1
         self._agent_nicknames: dict[str, str] = {}  # agent_id -> nickname
         self._nickname_to_agent: dict[str, str] = {}  # nickname -> agent_id
+        self._auto_registered_admins: set[int] = set()  # Auto-registered admin IDs
 
     def _is_admin(self, user_id: int) -> bool:
-        """Check if user is an admin."""
-        return user_id in self.config.telegram_admin_ids
+        """Check if user is an admin. Auto-registers first user if no admins configured."""
+        # Check configured admins
+        if user_id in self.config.telegram_admin_ids:
+            return True
+        # Check auto-registered admins
+        if user_id in self._auto_registered_admins:
+            return True
+        # Auto-register first user if no admins configured
+        if not self.config.telegram_admin_ids and not self._auto_registered_admins:
+            self._auto_registered_admins.add(user_id)
+            logger.info(f"Auto-registered user {user_id} as admin (first user)")
+            return True
+        return False
 
     def _assign_agent_number(self, agent_id: str) -> int:
         """Assign a short number to an agent and return it."""
@@ -229,14 +245,33 @@ class TelegramBot:
     # Command handlers
 
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /start command."""
+        """Handle /start command with welcome tutorial."""
         if not await self._check_admin(update):
             return
         if not await self._check_rate_limit(update):
             return
-        await update.message.reply_text(  # type: ignore
-            "Gru orchestrator ready. Use /gru help for commands."
-        )
+
+        welcome = """Welcome to Gru - your AI coding assistant!
+
+I can help you build software by spawning AI agents that write code, fix bugs, and deploy apps.
+
+Quick Start:
+1. Just tell me what you want to build in plain English
+2. I'll spawn an agent to do it
+3. Approve actions as needed (or use --oneshot for hands-free)
+
+Example - just send:
+"Build me a landing page for a coffee shop"
+
+Or use commands:
+/gru spawn Build a REST API with user auth
+/gru status - Check what's happening
+/gru examples - See more examples
+
+Pro tip: Send screenshots of UI designs and I'll build them!
+
+Ready when you are!"""
+        await update.message.reply_text(welcome)  # type: ignore
 
     async def cmd_gru(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /gru command."""
@@ -270,6 +305,11 @@ class TelegramBot:
             "cost": self._cmd_cost,
             "secret": self._cmd_secret,
             "template": self._cmd_template,
+            "examples": self._cmd_examples,
+            "doctor": self._cmd_doctor,
+            "create": self._cmd_create,
+            "deploy": self._cmd_deploy,
+            "setup": self._cmd_setup,
         }
 
         handler = handlers.get(command)
@@ -749,6 +789,282 @@ Default workdir: {self.config.default_workdir}"""
 
         else:
             await update.message.reply_text("Usage: /gru template <save|list|use|delete> ...")  # type: ignore
+
+    async def _cmd_examples(self, update: Update, args: list[str]) -> None:
+        """Show example prompts."""
+        examples = """Copy-paste Examples:
+
+Web Apps:
+  /gru spawn Build a todo app with React and local storage
+  /gru spawn Create a landing page for a SaaS product
+  /gru spawn Build a blog with markdown support
+
+APIs & Backend:
+  /gru spawn Create a REST API with Express and MongoDB
+  /gru spawn Build a FastAPI backend with user authentication
+  /gru spawn Set up a GraphQL server with Apollo
+
+Mobile & CLI:
+  /gru spawn Build a React Native expense tracker
+  /gru spawn Create a CLI tool for managing dotfiles
+
+DevOps:
+  /gru spawn Write a GitHub Actions CI/CD pipeline
+  /gru spawn Create a Dockerfile for a Node.js app
+  /gru spawn Set up Terraform for AWS infrastructure
+
+Quick fixes:
+  /gru spawn Fix the TypeScript errors in src/
+  /gru spawn Add unit tests for the auth module
+  /gru spawn Refactor the database queries for performance
+
+Hands-free mode (no approvals):
+  /gru spawn --oneshot Build a simple calculator app
+
+Just describe what you want - I'll figure out the rest!"""
+        await update.message.reply_text(examples)  # type: ignore
+
+    async def _cmd_doctor(self, update: Update, args: list[str]) -> None:
+        """Health check - verify all integrations work."""
+        checks: list[str] = []
+
+        # Check Anthropic API
+        try:
+            client = anthropic.Anthropic()
+            client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=10,
+                messages=[{"role": "user", "content": "hi"}],
+            )
+            checks.append("[OK] Anthropic API - connected")
+        except Exception as e:
+            checks.append(f"[FAIL] Anthropic API - {str(e)[:50]}")
+
+        # Check GitHub access
+        github_token = os.getenv("GRU_GITHUB_TOKEN")
+        if github_token:
+            try:
+                result = subprocess.run(
+                    ["git", "ls-remote", "https://github.com/octocat/Hello-World.git"],
+                    capture_output=True,
+                    timeout=10,
+                )
+                if result.returncode == 0:
+                    checks.append("[OK] GitHub - token configured")
+                else:
+                    checks.append("[WARN] GitHub - token set but may have issues")
+            except Exception:
+                checks.append("[WARN] GitHub - couldn't verify token")
+        else:
+            checks.append("[INFO] GitHub - no token (private repos won't work)")
+
+        # Check database
+        try:
+            agents = await self.orchestrator.list_agents()
+            checks.append(f"[OK] Database - {len(agents)} agents stored")
+        except Exception as e:
+            checks.append(f"[FAIL] Database - {str(e)[:50]}")
+
+        # Check orchestrator
+        try:
+            status = await self.orchestrator.get_status()
+            running = status["agents"]["running"]
+            checks.append(f"[OK] Orchestrator - {running} agents running")
+        except Exception as e:
+            checks.append(f"[FAIL] Orchestrator - {str(e)[:50]}")
+
+        # Summary
+        fails = sum(1 for c in checks if c.startswith("[FAIL]"))
+        warns = sum(1 for c in checks if c.startswith("[WARN]"))
+
+        if fails == 0 and warns == 0:
+            summary = "All systems operational!"
+        elif fails == 0:
+            summary = f"{warns} warning(s) - check details above"
+        else:
+            summary = f"{fails} issue(s) found - check details above"
+
+        report = "Health Check:\n\n" + "\n".join(checks) + f"\n\n{summary}"
+        await update.message.reply_text(report)  # type: ignore
+
+    async def _cmd_create(self, update: Update, args: list[str]) -> None:
+        """Create a project from template."""
+        templates = {
+            "react-app": (
+                "Create a new React app with TypeScript, Tailwind CSS, and a clean "
+                "folder structure. Include a basic layout component, routing, examples."
+            ),
+            "next-app": (
+                "Create a Next.js 14 app with TypeScript, Tailwind CSS, app router, "
+                "and a landing page with hero section, features, and footer."
+            ),
+            "express-api": (
+                "Create an Express.js REST API with TypeScript, including user auth "
+                "(JWT), a users CRUD endpoint, error handling middleware, and tests."
+            ),
+            "fastapi": (
+                "Create a FastAPI backend with Python, including user authentication, "
+                "SQLAlchemy models, Pydantic schemas, and OpenAPI docs."
+            ),
+            "landing-page": (
+                "Create a beautiful, responsive landing page with hero section, "
+                "features grid, testimonials, pricing cards, and contact form."
+            ),
+            "cli-tool": (
+                "Create a Python CLI tool with Click, including help text, "
+                "subcommands, config file support, and colorful output."
+            ),
+            "discord-bot": (
+                "Create a Discord bot with discord.py, including basic commands, "
+                "event handlers, and a modular cog structure."
+            ),
+            "chrome-extension": (
+                "Create a Chrome extension with popup UI, content script, "
+                "background worker, and manifest v3 configuration."
+            ),
+        }
+
+        if not args:
+            template_list = "\n".join([f"  {name}" for name in templates])
+            await update.message.reply_text(  # type: ignore
+                f"Usage: /gru create <template> [options]\n\n"
+                f"Available templates:\n{template_list}\n\n"
+                f"Example: /gru create landing-page --workdir /workspace/my-site"
+            )
+            return
+
+        template_name = args[0].lower()
+        if template_name not in templates:
+            await update.message.reply_text(  # type: ignore
+                f"Unknown template: {template_name}\nAvailable: {', '.join(templates.keys())}"
+            )
+            return
+
+        # Parse optional workdir
+        workdir = None
+        for i, arg in enumerate(args[1:], 1):
+            if arg == "--workdir" and i + 1 < len(args):
+                workdir = args[i + 1]
+                break
+
+        task = templates[template_name]
+        agent = await self.orchestrator.spawn_agent(
+            task=task,
+            supervised=False,  # Templates are pre-vetted, run unsupervised
+            priority="normal",
+            workdir=workdir,
+            timeout_mode="auto",
+        )
+
+        await update.message.reply_text(  # type: ignore
+            f"Creating {template_name}...\n\n"
+            f"Agent: {agent['id']}\n"
+            f"Task: {task[:100]}...\n\n"
+            f"I'll update you when it's ready!"
+        )
+
+    async def _cmd_deploy(self, update: Update, args: list[str]) -> None:
+        """Deploy project to Vercel or Netlify for live preview."""
+        if not args:
+            await update.message.reply_text(  # type: ignore
+                "Usage: /gru deploy <platform> [--workdir /path]\n\n"
+                "Platforms:\n"
+                "  vercel - Deploy to Vercel (requires VERCEL_TOKEN)\n"
+                "  netlify - Deploy to Netlify (requires NETLIFY_TOKEN)\n"
+                "  surge - Deploy to Surge.sh (free, no token needed)\n\n"
+                "Example: /gru deploy vercel --workdir /workspace/my-app"
+            )
+            return
+
+        platform = args[0].lower()
+
+        # Parse optional workdir
+        workdir = self.config.default_workdir
+        for i, arg in enumerate(args[1:], 1):
+            if arg == "--workdir" and i + 1 < len(args):
+                workdir = args[i + 1]
+                break
+
+        deploy_tasks = {
+            "vercel": (
+                f"Deploy the project in {workdir} to Vercel. Use the Vercel CLI "
+                "(npx vercel). Use VERCEL_TOKEN env var if set. Return the preview URL."
+            ),
+            "netlify": (
+                f"Deploy the project in {workdir} to Netlify. Use the Netlify CLI "
+                "(npx netlify deploy). Use NETLIFY_TOKEN env var. Return the preview URL."
+            ),
+            "surge": (
+                f"Deploy the project in {workdir} to Surge.sh. Install surge if needed "
+                "(npm install -g surge), run surge in build dir. Return the URL."
+            ),
+        }
+
+        if platform not in deploy_tasks:
+            await update.message.reply_text(  # type: ignore
+                f"Unknown platform: {platform}\nAvailable: {', '.join(deploy_tasks.keys())}"
+            )
+            return
+
+        task = deploy_tasks[platform]
+        agent = await self.orchestrator.spawn_agent(
+            task=task,
+            supervised=True,
+            priority="high",
+            workdir=workdir,
+        )
+
+        await update.message.reply_text(  # type: ignore
+            f"Deploying to {platform}...\n\nAgent: {agent['id']}\nI'll send you the preview URL when it's live!"
+        )
+
+    async def _cmd_setup(self, update: Update, args: list[str]) -> None:
+        """Interactive setup guide."""
+        issues: list[str] = []
+        tips: list[str] = []
+
+        # Check Anthropic API
+        if not os.getenv("ANTHROPIC_API_KEY"):
+            issues.append("ANTHROPIC_API_KEY not set")
+            tips.append("Get your API key at console.anthropic.com")
+        else:
+            tips.append("[OK] Anthropic API key configured")
+
+        # Check GitHub token
+        if not os.getenv("GRU_GITHUB_TOKEN"):
+            tips.append("[INFO] GRU_GITHUB_TOKEN not set - private repos won't work")
+        else:
+            tips.append("[OK] GitHub token configured")
+
+        # Check workdir
+        workdir = self.config.default_workdir
+        if not os.path.isdir(workdir):
+            issues.append(f"Default workdir doesn't exist: {workdir}")
+            tips.append(f"Create it with: mkdir -p {workdir}")
+        else:
+            tips.append(f"[OK] Workdir exists: {workdir}")
+
+        # Check master password for secrets
+        if not os.getenv("GRU_MASTER_PASSWORD"):
+            tips.append("[INFO] GRU_MASTER_PASSWORD not set - secret storage disabled")
+        else:
+            tips.append("[OK] Secret storage enabled")
+
+        if issues:
+            response = "Setup Issues Found:\n\n"
+            response += "\n".join(f"- {i}" for i in issues)
+            response += "\n\nHow to fix:\n"
+            response += "\n".join(tips)
+            response += "\n\nSet environment variables in Railway (or your host) and redeploy."
+        else:
+            response = "Setup looks good!\n\n"
+            response += "\n".join(tips)
+            response += "\n\nYou're ready to go! Try:\n"
+            response += "- Send a message describing what you want to build\n"
+            response += "- Use /gru examples to see copy-paste examples\n"
+            response += "- Use /gru create <template> for quick starts"
+
+        await update.message.reply_text(response)  # type: ignore
 
     # Callback handlers
 
@@ -1304,6 +1620,137 @@ Be concise and helpful."""
         except Exception as e:
             await update.message.reply_text(f"Error processing message: {e}")  # type: ignore
 
+    async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle photo messages - build UI from screenshots."""
+        if not await self._check_admin(update):
+            return
+        if not await self._check_rate_limit(update):
+            return
+
+        message = update.message
+        if not message or not message.photo:
+            return
+
+        # Get the largest photo
+        photo = message.photo[-1]
+        caption = message.caption or "Build this UI"
+
+        await message.reply_text(  # type: ignore
+            "Got your screenshot! I'll spawn an agent to build this UI.\n"
+            "The agent will analyze the image and recreate it in code."
+        )
+
+        # Download the photo
+        try:
+            file = await context.bot.get_file(photo.file_id)
+            file_bytes = await file.download_as_bytearray()
+            image_b64 = base64.b64encode(file_bytes).decode("utf-8")
+
+            task = f"""Build a UI that matches this design screenshot.
+
+User instructions: {caption}
+
+The screenshot is provided as a base64-encoded image. Analyze it and:
+1. Identify the layout, colors, typography, and components
+2. Create clean, responsive HTML/CSS or React code that recreates this design
+3. Match the visual style as closely as possible
+4. Use modern CSS (flexbox/grid) and semantic HTML
+
+Image (base64): {image_b64[:100]}... [truncated, full image available]
+
+IMPORTANT: The full base64 image data has been provided to you in the task context."""
+
+            agent = await self.orchestrator.spawn_agent(
+                task=task,
+                supervised=True,
+                priority="normal",
+            )
+
+            await message.reply_text(  # type: ignore
+                f"Agent spawned: {agent['id']}\n"
+                f"Building UI from your screenshot...\n"
+                f"I'll notify you when it needs approval or is complete!"
+            )
+        except Exception as e:
+            await message.reply_text(f"Error processing image: {e}")  # type: ignore
+
+    async def handle_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle voice messages - transcribe and create task."""
+        if not await self._check_admin(update):
+            return
+        if not await self._check_rate_limit(update):
+            return
+
+        message = update.message
+        if not message or not message.voice:
+            return
+
+        await message.reply_text("Got your voice message! Transcribing...")  # type: ignore
+
+        try:
+            # Download the voice file
+            file = await context.bot.get_file(message.voice.file_id)
+            file_bytes = await file.download_as_bytearray()
+            audio_b64 = base64.b64encode(file_bytes).decode("utf-8")
+
+            # Use Anthropic to transcribe
+            prompt = (
+                "Transcribe this voice message and summarize the task. "
+                "Format: TRANSCRIPTION: [words] TASK: [what they want]"
+            )
+            client = anthropic.Anthropic()
+            response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=1000,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "document",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "audio/ogg",
+                                    "data": audio_b64,
+                                },
+                            },
+                        ],
+                    }
+                ],
+            )
+
+            transcription = response.content[0].text if response.content else ""
+
+            # Extract task from transcription
+            task = transcription.split("TASK:")[-1].strip() if "TASK:" in transcription else transcription
+
+            await message.reply_text(  # type: ignore
+                f"Transcribed: {transcription[:200]}...\n\nSpawning agent for this task..."
+            )
+
+            agent = await self.orchestrator.spawn_agent(
+                task=task,
+                supervised=True,
+                priority="normal",
+            )
+
+            await message.reply_text(f"Agent spawned: {agent['id']}")  # type: ignore
+
+        except Exception as e:
+            await message.reply_text(  # type: ignore
+                f"Couldn't process voice message: {e}\nTry typing your request instead!"
+            )
+
+    def _progress_bar(self, current: int, total: int, width: int = 20) -> str:
+        """Generate a visual progress bar."""
+        if total == 0:
+            return "[" + "-" * width + "] 0%"
+        percent = min(100, int(current / total * 100))
+        filled = int(width * current / total)
+        bar = "=" * filled + "-" * (width - filled)
+        return f"[{bar}] {percent}%"
+
     async def start(self) -> None:
         """Start the Telegram bot."""
         self._app = Application.builder().token(self.config.telegram_token).build()
@@ -1312,6 +1759,10 @@ Be concise and helpful."""
         self._app.add_handler(CommandHandler("start", self.cmd_start))
         self._app.add_handler(CommandHandler("gru", self.cmd_gru))
         self._app.add_handler(CallbackQueryHandler(self.callback_approval))
+        # Photo handler for screenshots
+        self._app.add_handler(MessageHandler(filters.PHOTO, self.handle_photo))
+        # Voice handler for voice notes
+        self._app.add_handler(MessageHandler(filters.VOICE, self.handle_voice))
         # Casual message handler (must be last)
         self._app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 

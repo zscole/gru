@@ -37,6 +37,35 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def friendly_error(error: Exception) -> str:
+    """Convert technical errors to plain English."""
+    error_str = str(error).lower()
+
+    if "rate limit" in error_str or "429" in error_str:
+        return "Hit rate limit - waiting a moment before trying again"
+    elif "api key" in error_str or "authentication" in error_str or "401" in error_str:
+        return "API key issue - check ANTHROPIC_API_KEY is set correctly"
+    elif "connection" in error_str or "network" in error_str:
+        return "Connection issue - check your internet connection"
+    elif "timeout" in error_str:
+        return "Request timed out - the task might be too complex, trying again"
+    elif "quota" in error_str or "billing" in error_str:
+        return "API quota exceeded - check your Anthropic account billing"
+    elif "model" in error_str and "not found" in error_str:
+        return "Model not available - try a different model"
+    elif "permission" in error_str or "access denied" in error_str:
+        return "Permission denied - check file/directory permissions"
+    elif "not found" in error_str or "404" in error_str:
+        return "Resource not found - the file or endpoint doesn't exist"
+    elif "git" in error_str:
+        return f"Git issue: {error_str[:100]}"
+    elif "memory" in error_str or "oom" in error_str:
+        return "Out of memory - try a simpler task or smaller files"
+    else:
+        # Keep original but clean it up
+        return str(error)[:200]
+
+
 class Agent:
     """Represents a running agent."""
 
@@ -159,11 +188,25 @@ class Agent:
         return True
 
     def get_progress_summary(self) -> str:
-        """Generate a progress summary."""
+        """Generate a progress summary with visual progress bar."""
         runtime_mins = int(self.runtime_seconds / 60)
-        summary = f"Turn {self._turn_count}, running for {runtime_mins}m"
+
+        # Estimate progress based on turns and token usage
+        # Assume typical task takes ~50 turns or 100k tokens
+        turn_progress = min(100, int(self._turn_count / 50 * 100))
+        token_progress = min(100, int(self.total_tokens / 100000 * 100))
+        estimated_progress = max(turn_progress, token_progress)
+
+        # Visual progress bar
+        bar_width = 15
+        filled = int(bar_width * estimated_progress / 100)
+        bar = "=" * filled + "-" * (bar_width - filled)
+
+        summary = f"[{bar}] ~{estimated_progress}%\n"
+        summary += f"Turn {self._turn_count} | {runtime_mins}m | {self.total_tokens:,} tokens"
+
         if self._recent_tools:
-            recent = self._recent_tools[-5:]  # Last 5 tool calls
+            recent = self._recent_tools[-3:]  # Last 3 tool calls
             summary += "\nRecent: " + ", ".join(recent)
         return summary
 
@@ -583,6 +626,7 @@ class Orchestrator:
             await self.notify(agent.id, f"Agent {agent.id} {final_status}: {output_preview}")
 
         except Exception as e:
+            error_msg = friendly_error(e)
             await self.db.update_agent(
                 agent.id,
                 status="failed",
@@ -595,7 +639,7 @@ class Orchestrator:
                 error=str(e),
                 completed_at=datetime.now().isoformat(),
             )
-            await self.notify(agent.id, f"Agent {agent.id} failed: {e}")
+            await self.notify(agent.id, f"Agent {agent.id} failed: {error_msg}")
 
         finally:
             # Auto-push changes before cleanup
