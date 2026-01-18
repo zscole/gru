@@ -250,9 +250,9 @@ class TestMessageFormatting:
 
     def test_summarize_tool_input_bash_long(self, bot):
         """Test summarizing long bash command."""
-        long_cmd = "x" * 50
+        long_cmd = "x" * 150
         result = bot._summarize_tool_input("bash", {"command": long_cmd})
-        assert len(result) <= 33  # 30 + "..."
+        assert len(result) <= 103  # 100 + "..."
         assert "..." in result
 
     def test_summarize_tool_input_file(self, bot):

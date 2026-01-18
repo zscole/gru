@@ -570,9 +570,9 @@ class TestFormatLogEntry:
 
     def test_format_log_entry_long_string_truncated(self, bot):
         """Test long string content is truncated."""
-        msg = {"role": "assistant", "content": "x" * 300}
+        msg = {"role": "assistant", "content": "x" * 1500}
         result = bot._format_log_entry(msg)
-        assert len(result) < 300
+        assert len(result) < 1100  # 1000 char limit + role prefix
 
     def test_format_log_entry_list_with_text(self, bot):
         """Test formatting list content with text."""
@@ -640,10 +640,10 @@ class TestSummarizeToolInput:
 
     def test_summarize_bash_long_command(self, bot):
         """Test summarizing long bash command is truncated."""
-        long_cmd = "x" * 50
+        long_cmd = "x" * 150
         result = bot._summarize_tool_input("bash", {"command": long_cmd})
         assert "..." in result
-        assert len(result) < 50
+        assert len(result) < 150
 
     def test_summarize_read_file(self, bot):
         """Test summarizing read_file."""

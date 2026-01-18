@@ -144,7 +144,7 @@ class SlackBot:
         content = msg["content"]
 
         if isinstance(content, str):
-            return f"[{role}] {content[:200]}"
+            return f"[{role}] {content[:1000]}"
 
         if isinstance(content, list):
             parts = []
@@ -152,7 +152,7 @@ class SlackBot:
                 if isinstance(item, dict):
                     item_type = item.get("type", "")
                     if item_type == "text":
-                        text = item.get("text", "")[:100]
+                        text = item.get("text", "")[:500]
                         parts.append(text)
                     elif item_type == "tool_use":
                         name = item.get("name", "unknown")
@@ -160,25 +160,25 @@ class SlackBot:
                         summary = self._summarize_tool_input(name, inp)
                         parts.append(f"[tool] {name}({summary})")
                     elif item_type == "tool_result":
-                        result = item.get("content", "")[:80]
+                        result = item.get("content", "")[:500]
                         is_err = item.get("is_error", False)
                         prefix = "error" if is_err else "result"
                         parts.append(f"[{prefix}] {result}")
             return f"[{role}] " + " | ".join(parts) if parts else f"[{role}] (empty)"
 
-        return f"[{role}] {str(content)[:200]}"
+        return f"[{role}] {str(content)[:1000]}"
 
     def _summarize_tool_input(self, tool_name: str, tool_input: dict) -> str:
         """Summarize tool input for logs display."""
         if tool_name == "bash":
             cmd = tool_input.get("command", "")
-            return cmd[:30] + "..." if len(cmd) > 30 else cmd
+            return cmd[:100] + "..." if len(cmd) > 100 else cmd
         elif tool_name in ("read_file", "write_file"):
-            return tool_input.get("path", "")[:30]
+            return tool_input.get("path", "")[:100]
         elif tool_name == "search_files":
-            return tool_input.get("pattern", "")[:20]
+            return tool_input.get("pattern", "")[:50]
         else:
-            return str(tool_input)[:30]
+            return str(tool_input)[:100]
 
     async def _respond_ephemeral(self, respond: Any, text: str) -> None:
         """Send an ephemeral response."""
@@ -387,7 +387,7 @@ Default workdir: `{self.config.default_workdir}`"""
             msg = (
                 f"*Agent {agent['id']}*\n"
                 f"Status: {agent['status']}\n"
-                f"Task: {agent['task'][:100]}\n"
+                f"Task: {agent['task']}\n"
                 f"Model: {agent['model']}\n"
                 f"Supervised: {bool(agent['supervised'])}\n"
                 f"Workdir: {agent.get('workdir', 'N/A')}\n"
@@ -420,7 +420,7 @@ Default workdir: `{self.config.default_workdir}`"""
 
         lines = []
         for agent in agents[:20]:
-            lines.append(f"`{agent['id']}` [{agent['status']}] {agent['task'][:40]}...")
+            lines.append(f"`{agent['id']}` [{agent['status']}] {agent['task'][:100]}...")
 
         await self._respond(respond, "\n".join(lines))
 
@@ -521,8 +521,8 @@ Default workdir: `{self.config.default_workdir}`"""
 
         lines = []
         for p in pending:
-            details = json.dumps(p["action_details"])[:50]
-            lines.append(f"`{p['id']}`: {p['action_type']} - {details}...")
+            details = json.dumps(p["action_details"])[:500]
+            lines.append(f"`{p['id']}`: {p['action_type']} - {details}")
 
         await self._respond(respond, "\n".join(lines))
 
@@ -603,7 +603,7 @@ Default workdir: `{self.config.default_workdir}`"""
         elif subcmd == "list":
             templates = await self.orchestrator.db.list_templates()
             if templates:
-                lines = [f"`{t['name']}`: {t['task'][:50]}..." for t in templates]
+                lines = [f"`{t['name']}`: {t['task'][:200]}..." for t in templates]
                 await self._respond(respond, "Templates:\n" + "\n".join(lines))
             else:
                 await self._respond(respond, "No templates saved")
@@ -651,7 +651,7 @@ Default workdir: `{self.config.default_workdir}`"""
         for agent in results[:10]:
             tokens = agent.get("input_tokens", 0) + agent.get("output_tokens", 0)
             token_str = f" ({tokens:,} tokens)" if tokens else ""
-            lines.append(f"`{agent['id']}` [{agent['status']}] {agent['task'][:40]}...{token_str}")
+            lines.append(f"`{agent['id']}` [{agent['status']}] {agent['task'][:200]}...{token_str}")
 
         await self._respond(respond, f"*Search results for '{query}':*\n" + "\n".join(lines))
 
@@ -1025,7 +1025,7 @@ Default workdir: `{self.config.default_workdir}`"""
                 msg = (
                     f"*Agent {display}*\n"
                     f"Status: {agent_info['status']}\n"
-                    f"Task: {agent_info['task'][:100]}\n"
+                    f"Task: {agent_info['task']}\n"
                     f"Model: {agent_info['model']}\n"
                     f"Supervised: {bool(agent_info['supervised'])}\n"
                     f"Workdir: {agent_info.get('workdir', 'N/A')}\n"
@@ -1170,11 +1170,11 @@ Default workdir: `{self.config.default_workdir}`"""
         ]
 
         for a in recent_agents[:5]:
-            lines.append(f"  - {a['id']} [{a['status']}]: {a['task'][:50]}...")
+            lines.append(f"  - {a['id']} [{a['status']}]: {a['task'][:200]}...")
             if a.get("workdir"):
                 lines.append(f"    workdir: {a['workdir']}")
             if a.get("error"):
-                lines.append(f"    error: {a['error'][:100]}")
+                lines.append(f"    error: {a['error'][:500]}")
 
         if pending:
             lines.append("")

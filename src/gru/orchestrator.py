@@ -579,7 +579,7 @@ class Orchestrator:
                 result=response.content if not agent.is_cancelled else None,
             )
 
-            output_preview = response.content[:200] if response.content else "No output"
+            output_preview = response.content[:1000] if response.content else "No output"
             await self.notify(agent.id, f"Agent {agent.id} {final_status}: {output_preview}")
 
         except Exception as e:
@@ -675,7 +675,7 @@ class Orchestrator:
         # Notify and wait for approval
         await self.notify(
             agent.id,
-            f"Agent {agent.id} requests approval for {action}: {json.dumps(details)[:200]}",
+            f"Agent {agent.id} requests approval for {action}: {json.dumps(details)[:1000]}",
         )
 
         try:

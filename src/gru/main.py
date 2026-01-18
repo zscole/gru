@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import signal
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,6 +20,30 @@ from gru.telegram_bot import TelegramBot
 from gru.webhook import WebhookServer
 
 logger = logging.getLogger(__name__)
+
+
+def setup_git_credentials() -> None:
+    """Configure git to use GRU_GITHUB_TOKEN for authentication."""
+    token = os.getenv("GRU_GITHUB_TOKEN")
+    if not token:
+        return
+
+    try:
+        # Configure git credential helper to use the token
+        subprocess.run(
+            ["git", "config", "--global", "credential.helper", "store"],
+            check=True,
+            capture_output=True,
+        )
+
+        # Write credentials to git credential store
+        credentials_path = Path.home() / ".git-credentials"
+        credentials_path.write_text(f"https://x-access-token:{token}@github.com\n")
+        credentials_path.chmod(0o600)
+
+        logger.info("Git credentials configured for GitHub access")
+    except Exception as e:
+        logger.warning("Failed to configure git credentials: %s", e)
 
 
 async def run_server(config: Config) -> None:
@@ -165,6 +190,9 @@ def main() -> None:
         print("  GRU_DEFAULT_MODEL - Default Claude model")
         print("  GRU_MAX_AGENTS - Max concurrent agents (default: 10)")
         sys.exit(1)
+
+    # Set up git credentials if token is available
+    setup_git_credentials()
 
     # Run server
     asyncio.run(run_server(config))
