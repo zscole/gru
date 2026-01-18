@@ -27,12 +27,14 @@ Click the button above, then paste your 3 keys:
 
 **Step 3:** Start chatting
 
-Open Telegram, find your bot, and send:
+Open Telegram, search for the bot username you created (e.g., `@my_gru_bot`), and send:
 ```
 /gru spawn write a hello world script in python
 ```
 
 Done. You now have AI agents on your phone.
+
+*Need help creating a Telegram bot? See the [detailed Telegram setup guide](#telegram-setup-recommended).*
 
 ---
 
