@@ -979,7 +979,7 @@ Just describe what you want - I'll figure out the rest!"""
         platform = args[0].lower()
 
         # Parse optional workdir
-        workdir = self.config.default_workdir
+        workdir = str(self.config.default_workdir)
         for i, arg in enumerate(args[1:], 1):
             if arg == "--workdir" and i + 1 < len(args):
                 workdir = args[i + 1]
@@ -1635,7 +1635,7 @@ Be concise and helpful."""
         photo = message.photo[-1]
         caption = message.caption or "Build this UI"
 
-        await message.reply_text(  # type: ignore
+        await message.reply_text(
             "Got your screenshot! I'll spawn an agent to build this UI.\n"
             "The agent will analyze the image and recreate it in code."
         )
@@ -1666,13 +1666,13 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
                 priority="normal",
             )
 
-            await message.reply_text(  # type: ignore
+            await message.reply_text(
                 f"Agent spawned: {agent['id']}\n"
                 f"Building UI from your screenshot...\n"
                 f"I'll notify you when it needs approval or is complete!"
             )
         except Exception as e:
-            await message.reply_text(f"Error processing image: {e}")  # type: ignore
+            await message.reply_text(f"Error processing image: {e}")
 
     async def handle_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle voice messages - transcribe and create task."""
@@ -1685,7 +1685,7 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
         if not message or not message.voice:
             return
 
-        await message.reply_text("Got your voice message! Transcribing...")  # type: ignore
+        await message.reply_text("Got your voice message! Transcribing...")
 
         try:
             # Download the voice file
@@ -1707,7 +1707,7 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
                         "role": "user",
                         "content": [
                             {"type": "text", "text": prompt},
-                            {
+                            {  # type: ignore[list-item]
                                 "type": "document",
                                 "source": {
                                     "type": "base64",
@@ -1720,12 +1720,14 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
                 ],
             )
 
-            transcription = response.content[0].text if response.content else ""
+            transcription = ""
+            if response.content and hasattr(response.content[0], "text"):
+                transcription = getattr(response.content[0], "text", "")
 
             # Extract task from transcription
             task = transcription.split("TASK:")[-1].strip() if "TASK:" in transcription else transcription
 
-            await message.reply_text(  # type: ignore
+            await message.reply_text(
                 f"Transcribed: {transcription[:200]}...\n\nSpawning agent for this task..."
             )
 
@@ -1735,10 +1737,10 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
                 priority="normal",
             )
 
-            await message.reply_text(f"Agent spawned: {agent['id']}")  # type: ignore
+            await message.reply_text(f"Agent spawned: {agent['id']}")
 
         except Exception as e:
-            await message.reply_text(  # type: ignore
+            await message.reply_text(
                 f"Couldn't process voice message: {e}\nTry typing your request instead!"
             )
 
