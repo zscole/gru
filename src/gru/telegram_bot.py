@@ -1727,9 +1727,7 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
             # Extract task from transcription
             task = transcription.split("TASK:")[-1].strip() if "TASK:" in transcription else transcription
 
-            await message.reply_text(
-                f"Transcribed: {transcription[:200]}...\n\nSpawning agent for this task..."
-            )
+            await message.reply_text(f"Transcribed: {transcription[:200]}...\n\nSpawning agent for this task...")
 
             agent = await self.orchestrator.spawn_agent(
                 task=task,
@@ -1740,9 +1738,7 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
             await message.reply_text(f"Agent spawned: {agent['id']}")
 
         except Exception as e:
-            await message.reply_text(
-                f"Couldn't process voice message: {e}\nTry typing your request instead!"
-            )
+            await message.reply_text(f"Couldn't process voice message: {e}\nTry typing your request instead!")
 
     def _progress_bar(self, current: int, total: int, width: int = 20) -> str:
         """Generate a visual progress bar."""
