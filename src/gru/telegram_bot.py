@@ -1617,12 +1617,15 @@ Be concise and helpful."""
             if response.tool_uses:
                 for tool_use in response.tool_uses:
                     result = await self._handle_tool_use(tool_use.name, tool_use.input)
-                    await update.message.reply_text(result)  # type: ignore
+                    for chunk in self._split_message(result):
+                        await update.message.reply_text(chunk)  # type: ignore
                 return
 
-            await update.message.reply_text(response.content or "I couldn't generate a response.")  # type: ignore
+            content = response.content or "I couldn't generate a response."
+            for chunk in self._split_message(content):
+                await update.message.reply_text(chunk)  # type: ignore
         except Exception as e:
-            await update.message.reply_text(f"Error processing message: {e}")  # type: ignore
+            await update.message.reply_text(f"Error: {str(e)[:200]}")  # type: ignore
 
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle photo messages - build UI from screenshots."""
