@@ -1557,9 +1557,12 @@ Be concise and helpful."""
             terminated = 0
             for a in agents:
                 if a["status"] in ("running", "paused", "idle", "failed"):
+                    # Try to terminate in-memory agent first
                     success = await self.orchestrator.terminate_agent(a["id"])
-                    if success:
-                        terminated += 1
+                    if not success:
+                        # Agent not in memory, update database directly
+                        await self.orchestrator.db.update_agent(a["id"], status="terminated")
+                    terminated += 1
             return f"Terminated {terminated} agents"
 
         elif tool_name == "get_pending_approvals":
