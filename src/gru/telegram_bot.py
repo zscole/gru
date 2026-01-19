@@ -1392,6 +1392,11 @@ Be concise and helpful."""
                 },
             ),
             ToolDefinition(
+                name="terminate_all_agents",
+                description="Terminate/kill ALL agents. Use when user says 'kill all agents' or similar.",
+                input_schema={"type": "object", "properties": {}},
+            ),
+            ToolDefinition(
                 name="get_pending_approvals",
                 description="Get list of pending approval requests",
                 input_schema={"type": "object", "properties": {}},
@@ -1544,6 +1549,18 @@ Be concise and helpful."""
                 prefix = f"[{num}:{nick}]" if nick else f"[{num}]"
                 lines.append(f"{prefix} [{a['status']}] {a['task']}")
             return "\n".join(lines)
+
+        elif tool_name == "terminate_all_agents":
+            agents = await self.orchestrator.list_agents()
+            if not agents:
+                return "No agents to terminate"
+            terminated = 0
+            for a in agents:
+                if a["status"] in ("running", "paused", "idle", "failed"):
+                    success = await self.orchestrator.terminate_agent(a["id"])
+                    if success:
+                        terminated += 1
+            return f"Terminated {terminated} agents"
 
         elif tool_name == "get_pending_approvals":
             pending = await self.orchestrator.get_pending_approvals()
