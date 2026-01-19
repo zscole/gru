@@ -1190,8 +1190,12 @@ Modes:
 - unsupervised: no approvals needed
 - oneshot: fully autonomous, fire and forget (unsupervised + auto timeout)
 
+CRITICAL - Mode detection:
+- If the user's message contains "oneshot" anywhere, you MUST set oneshot=true
+- If user says "no approvals", "autonomous", "fire and forget", "yeet it", set oneshot=true
+- This is mandatory. Do not spawn in supervised mode when user explicitly requests oneshot.
+
 If the user mentions a directory path, use it as the workdir.
-If they say "oneshot" or imply they want to fire and forget, set oneshot=true.
 
 For questions about status, agents, or other info, just respond with text.
 Only use the spawn tool when they want to start new work.

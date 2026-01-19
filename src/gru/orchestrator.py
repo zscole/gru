@@ -36,6 +36,26 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_AGENT_SYSTEM = """You are an AI agent that completes tasks by using tools.
+
+IMPORTANT: You must USE the available tools to complete tasks. Do not just explain what you would do - actually do it.
+
+Working directory: {workdir}
+
+Available tools:
+- write_file: Create or overwrite files
+- read_file: Read file contents
+- bash: Execute shell commands
+- search_files: Find files by pattern
+
+When given a task:
+1. Use write_file to create the necessary files
+2. Use bash to run commands (install dependencies, test code, etc.)
+3. Report the result with any relevant output (URLs, file paths, etc.)
+
+Always create files in the working directory unless specified otherwise.
+Do not ask for confirmation - just execute the task."""
+
 
 def friendly_error(error: Exception) -> str:
     """Convert technical errors to plain English."""
@@ -247,20 +267,72 @@ class Orchestrator:
         self._cancel_approval_callback = callback
 
     def _truncate_conversation(self, messages: list[dict]) -> list[dict]:
-        """Truncate conversation to max length, keeping first and recent messages."""
+        """Truncate conversation to max length, preserving tool_use/tool_result pairs."""
         max_messages = self.config.max_conversation_messages
         if len(messages) <= max_messages:
             return messages
-        # Keep first message (task) and recent messages
-        keep_recent = max_messages - 1
+
+        # Find a safe truncation point that doesn't break tool pairs
+        # We need to keep messages from a point where there are no orphaned tool_results
+        keep_recent = max_messages - 2  # Reserve space for first msg + truncation notice
+
+        # Start from the candidate truncation point and scan forward
+        # to find a safe boundary (no tool_result without its tool_use)
+        candidate_start = len(messages) - keep_recent
+
+        # Collect tool_use_ids in the kept portion
+        def get_tool_use_ids(msg: dict) -> set[str]:
+            """Extract tool_use_ids from an assistant message."""
+            ids = set()
+            content = msg.get("content", [])
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_use":
+                        ids.add(block.get("id", ""))
+            return ids
+
+        def get_tool_result_ids(msg: dict) -> set[str]:
+            """Extract tool_use_ids referenced in tool_results."""
+            ids = set()
+            content = msg.get("content", [])
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_result":
+                        ids.add(block.get("tool_use_id", ""))
+            return ids
+
+        # Move start forward until we have a clean boundary
+        while candidate_start < len(messages) - 1:
+            kept_messages = messages[candidate_start:]
+            # Collect all tool_use_ids in kept assistant messages
+            tool_use_ids = set()
+            for msg in kept_messages:
+                if msg.get("role") == "assistant":
+                    tool_use_ids.update(get_tool_use_ids(msg))
+
+            # Check all tool_results reference a kept tool_use
+            valid = True
+            for msg in kept_messages:
+                if msg.get("role") == "user":
+                    result_ids = get_tool_result_ids(msg)
+                    if result_ids and not result_ids.issubset(tool_use_ids):
+                        valid = False
+                        break
+
+            if valid:
+                break
+            candidate_start += 1
+
         truncated = [messages[0]]
-        truncated.append(
-            {
-                "role": "user",
-                "content": f"[Earlier conversation truncated. {len(messages) - max_messages} messages removed.]",
-            }
-        )
-        truncated.extend(messages[-keep_recent:])
+        removed_count = candidate_start - 1
+        if removed_count > 0:
+            truncated.append(
+                {
+                    "role": "user",
+                    "content": f"[Earlier conversation truncated. {removed_count} messages removed.]",
+                }
+            )
+        truncated.extend(messages[candidate_start:])
         return truncated
 
     async def notify(self, agent_id: str, message: str) -> None:
@@ -485,6 +557,10 @@ class Orchestrator:
         # Initialize messages with task
         agent_data = await self.db.get_agent(agent.id)
         system_prompt = agent_data.get("system_prompt") if agent_data else None
+
+        # Use default agent system prompt if none provided
+        if not system_prompt:
+            system_prompt = DEFAULT_AGENT_SYSTEM.format(workdir=agent.workdir)
 
         agent.messages = [{"role": "user", "content": agent.task}]
         await self.db.add_message(agent.id, "user", agent.task)
