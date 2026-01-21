@@ -79,79 +79,87 @@ def mock_db():
 
 def test_ralph_command_basic(runner, mock_orchestrator, mock_db):
     """Test basic ralph command."""
-    with patch("gru.cli.get_orchestrator", return_value=mock_orchestrator):
-        with patch("gru.cli.run_async", side_effect=lambda x: asyncio.run(x) if asyncio.iscoroutine(x) else x):
-            with patch("gru.cli.Database", return_value=mock_db):
-                result = runner.invoke(cli, ["ralph", "Write a hello world program"])
+    with (
+        patch("gru.cli.get_orchestrator", return_value=mock_orchestrator),
+        patch("gru.cli.run_async", side_effect=lambda x: asyncio.run(x) if asyncio.iscoroutine(x) else x),
+        patch("gru.cli.Database", return_value=mock_db),
+    ):
+        result = runner.invoke(cli, ["ralph", "Write a hello world program"])
 
-                assert result.exit_code == 0
-                assert "Ralph loop started: ralph-123" in result.output
-                assert "Task: Write a hello world program" in result.output
-                assert "Max iterations: 20" in result.output  # Default
-                mock_orchestrator.spawn_ralph_loop.assert_called_once()
+        assert result.exit_code == 0
+        assert "Ralph loop started: ralph-123" in result.output
+        assert "Task: Write a hello world program" in result.output
+        assert "Max iterations: 20" in result.output  # Default
+        mock_orchestrator.spawn_ralph_loop.assert_called_once()
 
 
 def test_ralph_command_with_options(runner, mock_orchestrator, mock_db):
     """Test ralph command with all options."""
-    with patch("gru.cli.get_orchestrator", return_value=mock_orchestrator):
-        with patch("gru.cli.run_async", side_effect=lambda x: asyncio.run(x) if asyncio.iscoroutine(x) else x):
-            with patch("gru.cli.Database", return_value=mock_db):
-                result = runner.invoke(
-                    cli,
-                    [
-                        "ralph",
-                        "Write tests",
-                        "--max-iterations",
-                        "10",
-                        "--completion-promise",
-                        "DONE",
-                        "--name",
-                        "test-ralph",
-                        "--model",
-                        "claude-3-5-sonnet-20241022",
-                        "--priority",
-                        "high",
-                    ],
-                )
+    with (
+        patch("gru.cli.get_orchestrator", return_value=mock_orchestrator),
+        patch("gru.cli.run_async", side_effect=lambda x: asyncio.run(x) if asyncio.iscoroutine(x) else x),
+        patch("gru.cli.Database", return_value=mock_db),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "ralph",
+                "Write tests",
+                "--max-iterations",
+                "10",
+                "--completion-promise",
+                "DONE",
+                "--name",
+                "test-ralph",
+                "--model",
+                "claude-3-5-sonnet-20241022",
+                "--priority",
+                "high",
+            ],
+        )
 
-                assert result.exit_code == 0
-                assert "Max iterations: 10" in result.output
-                assert "Completion promise: DONE" in result.output
-                assert "Priority: high" in result.output
+        assert result.exit_code == 0
+        assert "Max iterations: 10" in result.output
+        assert "Completion promise: DONE" in result.output
+        assert "Priority: high" in result.output
 
-                mock_orchestrator.spawn_ralph_loop.assert_called_once_with(
-                    task="Write tests",
-                    max_iterations=10,
-                    completion_promise="DONE",
-                    name="test-ralph",
-                    model="claude-3-5-sonnet-20241022",
-                    priority="high",
-                )
+        mock_orchestrator.spawn_ralph_loop.assert_called_once_with(
+            task="Write tests",
+            max_iterations=10,
+            completion_promise="DONE",
+            name="test-ralph",
+            model="claude-3-5-sonnet-20241022",
+            priority="high",
+        )
 
 
 def test_cancel_ralph_command(runner, mock_orchestrator, mock_db):
     """Test cancel-ralph command."""
-    with patch("gru.cli.get_orchestrator", return_value=mock_orchestrator):
-        with patch("gru.cli.run_async", side_effect=lambda x: asyncio.run(x) if asyncio.iscoroutine(x) else x):
-            with patch("gru.cli.Database", return_value=mock_db):
-                result = runner.invoke(cli, ["cancel-ralph", "ralph-123"])
+    with (
+        patch("gru.cli.get_orchestrator", return_value=mock_orchestrator),
+        patch("gru.cli.run_async", side_effect=lambda x: asyncio.run(x) if asyncio.iscoroutine(x) else x),
+        patch("gru.cli.Database", return_value=mock_db),
+    ):
+        result = runner.invoke(cli, ["cancel-ralph", "ralph-123"])
 
-                assert result.exit_code == 0
-                assert "Ralph loop ralph-123 cancelled" in result.output
-                mock_orchestrator.cancel_ralph_loop.assert_called_once_with("ralph-123")
+        assert result.exit_code == 0
+        assert "Ralph loop ralph-123 cancelled" in result.output
+        mock_orchestrator.cancel_ralph_loop.assert_called_once_with("ralph-123")
 
 
 def test_cancel_ralph_command_failure(runner, mock_orchestrator, mock_db):
     """Test cancel-ralph command when cancellation fails."""
     mock_orchestrator.cancel_ralph_loop = AsyncMock(return_value=False)
 
-    with patch("gru.cli.get_orchestrator", return_value=mock_orchestrator):
-        with patch("gru.cli.run_async", side_effect=lambda x: asyncio.run(x) if asyncio.iscoroutine(x) else x):
-            with patch("gru.cli.Database", return_value=mock_db):
-                result = runner.invoke(cli, ["cancel-ralph", "ralph-123"])
+    with (
+        patch("gru.cli.get_orchestrator", return_value=mock_orchestrator),
+        patch("gru.cli.run_async", side_effect=lambda x: asyncio.run(x) if asyncio.iscoroutine(x) else x),
+        patch("gru.cli.Database", return_value=mock_db),
+    ):
+        result = runner.invoke(cli, ["cancel-ralph", "ralph-123"])
 
-                assert result.exit_code == 1
-                assert "Could not cancel Ralph loop ralph-123" in result.output
+        assert result.exit_code == 1
+        assert "Could not cancel Ralph loop ralph-123" in result.output
 
 
 # =============================================================================
