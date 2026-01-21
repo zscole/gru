@@ -170,6 +170,14 @@ ruff check src/ tests/
 mypy src/
 ```
 
+## Funding & Sponsors
+
+This project is funded by the [$GRU token](https://gruonsol.com/) community on Solana.
+
+**Contract Address:** `HXU8HiXKeMBTZ9QCSxWrdGySBhbHeJLhGbY6b4z6BAGS`
+
+Special thanks to our sponsors and community members who support open-source AI development. Your contributions enable continuous improvement and new features like Ralph loops.
+
 ## License
 
 MIT
