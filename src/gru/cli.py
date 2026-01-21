@@ -221,6 +221,67 @@ def nudge(ctx: click.Context, agent_id: str, message: str) -> None:
 
 
 @cli.command()
+@click.argument("task")
+@click.option("--max-iterations", "-i", type=int, default=20, help="Maximum iterations")
+@click.option("--completion-promise", "-c", help="String to detect completion")
+@click.option("--name", "-n", help="Agent name")
+@click.option("--model", "-m", help="Model to use")
+@click.option("--priority", type=click.Choice(["high", "normal", "low"]), default="normal")
+@click.pass_context
+def ralph(
+    ctx: click.Context,
+    task: str,
+    max_iterations: int,
+    completion_promise: str | None,
+    name: str | None,
+    model: str | None,
+    priority: str,
+) -> None:
+    """Start a Ralph Wiggum iterative development loop.
+
+    Ralph is an AI development methodology that creates self-referential
+    feedback loops where an agent iteratively improves work through
+    continuous iterations until completion or max iterations reached.
+    """
+    orchestrator = get_orchestrator(ctx)
+
+    agent = run_async(
+        orchestrator.spawn_ralph_loop(
+            task=task,
+            max_iterations=max_iterations,
+            completion_promise=completion_promise,
+            name=name,
+            model=model,
+            priority=priority,
+        )
+    )
+
+    click.echo(f"Ralph loop started: {agent['id']}")
+    click.echo(f"Task: {task}")
+    click.echo(f"Max iterations: {max_iterations}")
+    if completion_promise:
+        click.echo(f"Completion promise: {completion_promise}")
+    click.echo(f"Priority: {priority}")
+    click.echo("\nUse 'gru status <agent_id>' to monitor progress")
+    click.echo("Use 'gru cancel-ralph <agent_id>' to stop the loop")
+
+
+@cli.command("cancel-ralph")
+@click.argument("agent_id")
+@click.pass_context
+def cancel_ralph(ctx: click.Context, agent_id: str) -> None:
+    """Cancel an active Ralph loop."""
+    orchestrator = get_orchestrator(ctx)
+    success = run_async(orchestrator.cancel_ralph_loop(agent_id))
+
+    if success:
+        click.echo(f"Ralph loop {agent_id} cancelled")
+    else:
+        click.echo(f"Could not cancel Ralph loop {agent_id}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
 @click.argument("agent_id")
 @click.option("--tail", "-t", default=20, help="Number of messages to show")
 @click.pass_context

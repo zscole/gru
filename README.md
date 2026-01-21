@@ -42,6 +42,7 @@ That's it.
 - **Templates** - `/gru create react-app`
 - **Live deploy** - `/gru deploy vercel`
 - **Health check** - `/gru doctor`
+- **Ralph loops** - Iterative AI development cycles
 
 ## Contents
 
@@ -135,6 +136,7 @@ docker-compose up -d
 | Doc | Description |
 |-----|-------------|
 | [Commands](docs/commands.md) | Full command reference |
+| [Ralph Loops](docs/ralph.md) | Iterative AI development cycles |
 | [Configuration](docs/configuration.md) | All environment variables |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues and fixes |
 | [MCP Plugins](docs/mcp-plugins.md) | Extend with MCP servers |

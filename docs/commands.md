@@ -35,6 +35,22 @@ Commands work the same across platforms. Telegram uses `/gru <command>`, Discord
 /gru logs <id>               # View conversation history
 ```
 
+## Ralph Loops (Iterative Development)
+
+```
+/gru ralph <task>                           # Start iterative loop (20 iterations)
+/gru ralph <task> --max-iterations 50       # Custom iteration limit
+/gru ralph <task> --completion-promise DONE # Stop when "DONE" appears
+/gru ralph <task> --name my-loop            # Named loop
+/gru cancel-ralph <id>                      # Cancel active loop
+```
+
+Ralph loops enable autonomous iterative development where the AI agent continuously refines its work:
+- Agent works on the task, then automatically restarts with context from previous iteration
+- Continues until completion promise detected or max iterations reached
+- Runs unsupervised (no approval prompts)
+- Ideal for: refactors, test coverage, batch operations, greenfield builds
+
 ## Deploy
 
 ```

@@ -249,6 +249,7 @@ class Orchestrator:
         self.coordinator = Coordinator(db)
         self.mcp = MCPClient(mcp_config_path)
         self._agents: dict[str, Agent] = {}
+        self._ralph_loops: dict[str, dict[str, Any]] = {}  # Track Ralph loop metadata
         self._running = False
         self._notify_callback: Callable[[str, str], None] | None = None
         self._approval_callback: Callable[[str, dict], asyncio.Future] | None = None
@@ -1124,3 +1125,160 @@ class Orchestrator:
             cost = f"{input_cost + output_cost:.4f}"
             return input_tokens, output_tokens, cost
         return None
+
+    async def spawn_ralph_loop(
+        self,
+        task: str,
+        max_iterations: int = 20,
+        completion_promise: str | None = None,
+        name: str | None = None,
+        model: str | None = None,
+        priority: str = "normal",
+    ) -> dict[str, Any]:
+        """Start a Ralph Wiggum iterative development loop.
+
+        Ralph is an AI development methodology that creates self-referential
+        feedback loops where an agent iteratively improves work through
+        continuous iterations.
+
+        Args:
+            task: The task to iteratively work on
+            max_iterations: Maximum number of iterations (default 20)
+            completion_promise: String to detect completion
+            name: Optional agent name
+            model: Model to use
+            priority: Task priority
+
+        Returns:
+            Agent data dictionary
+        """
+        # Create the initial agent with Ralph loop metadata
+        agent_name = name or f"ralph-{str(uuid.uuid4())[:8]}"
+
+        # Add Ralph loop instructions to the task
+        ralph_task = f"""RALPH LOOP TASK:
+{task}
+
+INSTRUCTIONS:
+- This is an iterative Ralph loop. You will work on this task multiple times.
+- Each iteration, review your previous work and improve it.
+- Continue refining until the task is complete or you reach the iteration limit.
+- Current iteration: 1/{max_iterations}
+"""
+        if completion_promise:
+            ralph_task += f"\n- When complete, output exactly: {completion_promise}"
+
+        # Store Ralph metadata
+        ralph_metadata = {
+            "is_ralph_loop": True,
+            "max_iterations": max_iterations,
+            "current_iteration": 1,
+            "completion_promise": completion_promise,
+            "original_task": task,
+        }
+
+        # Spawn the initial agent
+        agent = await self.spawn_agent(
+            task=ralph_task,
+            name=agent_name,
+            model=model,
+            supervised=False,  # Ralph loops run autonomously
+            priority=priority,
+        )
+
+        # Store Ralph metadata in agent
+        agent_id = agent["id"]
+        self._ralph_loops[agent_id] = ralph_metadata
+
+        # Start the Ralph loop monitor
+        asyncio.create_task(self._monitor_ralph_loop(agent_id))
+
+        return agent
+
+    async def _monitor_ralph_loop(self, agent_id: str) -> None:
+        """Monitor a Ralph loop and re-spawn iterations as needed."""
+        while agent_id in self._ralph_loops:
+            await asyncio.sleep(5)  # Check every 5 seconds
+
+            agent = await self.get_agent(agent_id)
+            if not agent:
+                break
+
+            ralph_meta = self._ralph_loops.get(agent_id)
+            if not ralph_meta:
+                break
+
+            # Check if agent completed
+            if agent["status"] in ["completed", "failed"]:
+                current_iter = ralph_meta["current_iteration"]
+                max_iter = ralph_meta["max_iterations"]
+
+                # Check for completion promise in conversation
+                if ralph_meta["completion_promise"]:
+                    conversation = await self.db.get_conversation(agent_id)
+                    if conversation:
+                        last_msg = conversation[-1] if conversation else None
+                        if last_msg and ralph_meta["completion_promise"] in str(last_msg.get("content", "")):
+                            # Completion promise found
+                            await self.notify(
+                                agent_id, f"Ralph loop completed: {ralph_meta['completion_promise']} detected"
+                            )
+                            del self._ralph_loops[agent_id]
+                            break
+
+                # Check iteration limit
+                if current_iter >= max_iter:
+                    await self.notify(agent_id, f"Ralph loop completed: max iterations ({max_iter}) reached")
+                    del self._ralph_loops[agent_id]
+                    break
+
+                # Continue with next iteration
+                ralph_meta["current_iteration"] += 1
+
+                # Get the conversation history for context
+                conversation = await self.db.get_conversation(agent_id)
+
+                # Create task for next iteration
+                next_task = f"""RALPH LOOP CONTINUATION:
+{ralph_meta["original_task"]}
+
+INSTRUCTIONS:
+- This is iteration {ralph_meta["current_iteration"]}/{ralph_meta["max_iterations"]} of the Ralph loop.
+- Review your previous work and continue improving it.
+- Build on what you've done, fix any issues, and enhance the solution.
+"""
+                if ralph_meta["completion_promise"]:
+                    next_task += f"\n- When complete, output exactly: {ralph_meta['completion_promise']}"
+
+                # Add summary of previous work
+                if conversation and len(conversation) > 1:
+                    # Get last assistant message
+                    for msg in reversed(conversation):
+                        if msg.get("role") == "assistant" and isinstance(msg.get("content"), str):
+                            preview = msg["content"][:500]
+                            next_task += f"\n\nPREVIOUS WORK SUMMARY:\n{preview}..."
+                            break
+
+                # Spawn next iteration
+                await self.spawn_agent(
+                    task=next_task,
+                    name=f"{agent['name'] or agent_id}-iter{ralph_meta['current_iteration']}",
+                    model=agent.get("model"),
+                    supervised=False,
+                    priority=agent.get("priority", "normal"),
+                )
+
+                await self.notify(
+                    agent_id, f"Ralph loop iteration {ralph_meta['current_iteration']}/{max_iter} started"
+                )
+
+    async def cancel_ralph_loop(self, agent_id: str) -> bool:
+        """Cancel an active Ralph loop."""
+        if agent_id in self._ralph_loops:
+            del self._ralph_loops[agent_id]
+            # Also terminate the current agent
+            success = await self.terminate_agent(agent_id)
+            if success:
+                await self.notify(agent_id, f"Ralph loop {agent_id} cancelled")
+            return success
+        return False
