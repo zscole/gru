@@ -176,6 +176,8 @@ This project is funded by the [$GRU token](https://gruonsol.com/) community on S
 
 **Contract Address:** `HXU8HiXKeMBTZ9QCSxWrdGySBhbHeJLhGbY6b4z6BAGS`
 
+**Buy $GRU:** [Jupiter Exchange](https://jup.ag/swap?sell=So11111111111111111111111111111111111111112&buy=HXU8HiXKeMBTZ9QCSxWrdGySBhbHeJLhGbY6b4z6BAGS)
+
 Special thanks to our sponsors and community members who support open-source AI development. Your contributions enable continuous improvement and new features like Ralph loops.
 
 ## License
