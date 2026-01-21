@@ -955,6 +955,38 @@ Default workdir: `{self.config.default_workdir}`"""
                     "required": ["agent_ref", "nickname"],
                 },
             ),
+            ToolDefinition(
+                name="spawn_ralph_loop",
+                description="Start a Ralph loop for iterative development. Use for 'ralph', 'iterate', 'keep trying'.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "task": {"type": "string", "description": "The task to iteratively work on"},
+                        "max_iterations": {
+                            "type": "integer",
+                            "description": "Maximum iterations before stopping",
+                            "default": 20,
+                        },
+                        "completion_promise": {
+                            "type": "string",
+                            "description": "Exact string that signals task completion (e.g. 'DONE', 'TESTS_PASS')",
+                        },
+                        "priority": {"type": "string", "enum": ["high", "normal", "low"], "default": "normal"},
+                    },
+                    "required": ["task"],
+                },
+            ),
+            ToolDefinition(
+                name="cancel_ralph_loop",
+                description="Cancel an active Ralph loop",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "agent_ref": {"type": "string", "description": "Agent number (e.g. '1') or full ID"}
+                    },
+                    "required": ["agent_ref"],
+                },
+            ),
         ]
 
     async def _handle_tool_use(self, tool_name: str, params: dict) -> str:
@@ -1106,6 +1138,39 @@ Default workdir: `{self.config.default_workdir}`"""
                 return f"Agent [{agent_num}] is now nicknamed `{nickname}`"
             return f"Nickname `{nickname}` is already taken"
 
+        elif tool_name == "spawn_ralph_loop":
+            task = params.get("task", "")
+            max_iterations = params.get("max_iterations", 20)
+            completion_promise = params.get("completion_promise")
+            priority = params.get("priority", "normal")
+
+            agent = await self.orchestrator.spawn_ralph_loop(
+                task=task,
+                max_iterations=max_iterations,
+                completion_promise=completion_promise,
+                priority=priority,
+            )
+
+            num = self._assign_agent_number(agent["id"])
+            msg = (
+                f"Ralph loop started: `[{num}]` {agent['id']}\n"
+                f"Task: {task}\n"
+                f"Max iterations: {max_iterations}\n"
+                f"Priority: {priority}"
+            )
+            if completion_promise:
+                msg += f"\nCompletion promise: {completion_promise}"
+            return msg
+
+        elif tool_name == "cancel_ralph_loop":
+            ref = params.get("agent_ref", "")
+            agent_id = self._resolve_agent_ref(ref)
+            if not agent_id:
+                return f"Unknown agent: {ref}"
+            success = await self.orchestrator.cancel_ralph_loop(agent_id)
+            display = self._get_agent_display(agent_id)
+            return f"Ralph loop {display} cancelled" if success else f"Could not cancel Ralph loop {display}"
+
         return f"Unknown tool: {tool_name}"
 
     def _register_messages(self) -> None:
@@ -1201,6 +1266,12 @@ CRITICAL - Mode detection:
 - If the user's message contains "oneshot" anywhere, you MUST set oneshot=true
 - If user says "no approvals", "autonomous", "fire and forget", "yeet it", set oneshot=true
 - This is mandatory. Do not spawn in supervised mode when user explicitly requests oneshot.
+
+Ralph Loops (iterative development):
+Use spawn_ralph_loop when user wants iterative refinement or mentions "ralph", "iterate", "keep trying".
+- Ralph loops run autonomously, iterating until completion or max iterations
+- Set completion_promise to a string the agent should output when done (e.g. "TESTS_PASS")
+- Ideal for: test coverage, refactoring, batch operations
 
 If the user mentions a directory path, use it as the workdir.
 
