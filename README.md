@@ -113,6 +113,23 @@ Gru monitors itself and fixes problems automatically.
 - **Bug detection** - Identifies errors and spawns fix agents
 - **Performance monitoring** - Tracks slow operations and resource usage
 
+### Multimodel Support
+Gru routes tasks to the best model for the job.
+
+| Task Type | Routed To |
+|-----------|-----------|
+| Complex reasoning | Claude Opus |
+| Code generation | Claude Sonnet |
+| Simple cleanup | Ollama (local) |
+| Web search | Ollama (local) |
+| Vision tasks | Claude (required) |
+
+Run models locally with Ollama for cost savings and unrestricted capabilities:
+```bash
+GRU_OLLAMA_URL=http://localhost:11434
+GRU_OLLAMA_MODEL=llama3:8b
+```
+
 ### Development Tools
 The original Gru - still the best way to code from your phone.
 
@@ -244,7 +261,12 @@ docker-compose up -d
 Telegram/Discord/Slack
          |
          v
-   Orchestrator <---------> Claude API
+   Orchestrator
+         |
+         +---> Provider Router
+         |         |
+         |         +---> Claude API (complex tasks, code, vision)
+         |         +---> Ollama (local models, simple tasks)
          |
          +---> Agent Pool (spawn, coordinate, parallelize)
          |         |

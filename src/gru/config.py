@@ -36,6 +36,13 @@ class Config:
     default_model: str = "claude-sonnet-4-20250514"
     max_tokens: int = 8192
 
+    # Ollama (local models)
+    ollama_url: str | None = None  # e.g., "http://mac-mini.local:11434"
+    ollama_default_model: str = "llama3:8b"
+
+    # Provider routing
+    default_provider: str = "anthropic"
+
     # Agent defaults
     default_timeout: int = 300  # seconds per approval
     max_concurrent_agents: int = 10
@@ -141,6 +148,9 @@ class Config:
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             default_model=os.getenv("GRU_DEFAULT_MODEL", "claude-sonnet-4-20250514"),
             max_tokens=int(os.getenv("GRU_MAX_TOKENS", "8192")),
+            ollama_url=os.getenv("GRU_OLLAMA_URL"),
+            ollama_default_model=os.getenv("GRU_OLLAMA_MODEL", "llama3:8b"),
+            default_provider=os.getenv("GRU_DEFAULT_PROVIDER", "anthropic"),
             default_timeout=int(os.getenv("GRU_DEFAULT_TIMEOUT", "300")),
             max_concurrent_agents=int(os.getenv("GRU_MAX_AGENTS", "10")),
             default_workdir=workdir,

@@ -18,11 +18,12 @@ import anthropic
 
 from gru.actions.executor import ActionExecutor
 from gru.agent import Agent as ChatAgent
-from gru.claude import DEFAULT_TOOLS, ClaudeClient, Response, ToolResult
+from gru.claude import DEFAULT_TOOLS, Response, ToolResult
 from gru.coordinator import Coordinator
 from gru.mcp import MCPClient
 from gru.memory import MemoryStore
 from gru.proactive import ProactiveEngine, setup_default_triggers
+from gru.providers import TaskType, create_router
 from gru.scheduler import Scheduler
 from gru.session import SessionManager
 from gru.worktree import (
@@ -105,11 +106,13 @@ class Agent:
         orchestrator: Orchestrator,
         worktree_info: WorktreeInfo | None = None,
         name: str | None = None,
+        provider: str = "anthropic",
     ) -> None:
         self.id = agent_id
         self.name = name
         self.task = task
         self.model = model
+        self.provider = provider
         self.supervised = supervised
         self.timeout_mode = timeout_mode
         self.workdir = workdir
@@ -252,7 +255,8 @@ class Orchestrator:
         self.config = config
         self.db = db
         self.secrets = secrets
-        self.claude = ClaudeClient(config)
+        self.router = create_router(config)
+        self.claude = self.router.get(self.router.default)
         self.scheduler = Scheduler(db, config.max_concurrent_agents)
         self.coordinator = Coordinator(db)
         self.mcp = MCPClient(mcp_config_path)
@@ -432,6 +436,56 @@ class Orchestrator:
         output_cost = (agent._total_output_tokens / 1_000_000) * rates["output"]
         return f"{input_cost + output_cost:.4f}"
 
+    def _classify_task(self, task: str) -> TaskType:
+        """Classify a task to determine routing.
+
+        Analyzes task content to determine which provider/model is best suited.
+        """
+        task_lower = task.lower()
+
+        # Simple cleanup tasks - can use local models
+        cleanup_keywords = [
+            "format", "lint", "clean up", "cleanup", "fix whitespace",
+            "remove unused", "sort imports", "prettify", "tidy",
+        ]
+        if any(kw in task_lower for kw in cleanup_keywords):
+            return TaskType.SIMPLE_CLEANUP
+
+        # Web search tasks - local models can handle
+        search_keywords = [
+            "search for", "google", "look up", "find online",
+            "search the web", "web search", "browse",
+        ]
+        if any(kw in task_lower for kw in search_keywords):
+            return TaskType.WEB_SEARCH
+
+        # Complex reasoning tasks - need frontier models
+        complex_keywords = [
+            "analyze", "architect", "design system", "complex",
+            "optimize algorithm", "refactor entire", "security audit",
+            "review architecture", "debug complex", "investigate",
+        ]
+        if any(kw in task_lower for kw in complex_keywords):
+            return TaskType.COMPLEX_REASONING
+
+        # Code generation - frontier models preferred
+        code_keywords = [
+            "implement", "write code", "create function", "build",
+            "develop", "code", "programming", "script",
+        ]
+        if any(kw in task_lower for kw in code_keywords):
+            return TaskType.CODE_GENERATION
+
+        # Vision tasks
+        vision_keywords = [
+            "image", "screenshot", "picture", "photo", "visual",
+            "look at", "see the", "analyze image",
+        ]
+        if any(kw in task_lower for kw in vision_keywords):
+            return TaskType.VISION
+
+        return TaskType.GENERAL
+
     async def spawn_agent(
         self,
         task: str,
@@ -454,8 +508,19 @@ class Orchestrator:
             raise ValueError("Task cannot be empty")
 
         agent_id = str(uuid.uuid4())[:8]
-        model = model or self.config.default_model
         workdir = workdir or str(self.config.default_workdir)
+
+        # Route to appropriate provider/model
+        if model:
+            # Explicit model specified - use default provider
+            provider_name = self.config.default_provider
+        else:
+            # Auto-route based on task content
+            task_type = self._classify_task(task)
+            decision = self.router.route(task_type=task_type)
+            provider_name = decision.provider
+            model = decision.model or self.config.default_model
+            logger.info(f"Routed task to {provider_name}/{model} ({decision.reason})")
 
         # Ensure workdir exists
         Path(workdir).mkdir(parents=True, exist_ok=True)
@@ -521,6 +586,7 @@ class Orchestrator:
             orchestrator=self,
             worktree_info=worktree_info,
             name=name,
+            provider=provider_name,
         )
         agent.live_output = live_output
         self._agents[agent_id] = agent
@@ -752,10 +818,11 @@ class Orchestrator:
                 # Truncate conversation if needed to prevent memory issues
                 truncated_messages = self._truncate_conversation(agent.messages)
 
-                # Get response from Claude (include MCP tools)
+                # Get response from provider (include MCP tools)
                 all_tools = DEFAULT_TOOLS + self.mcp.get_all_tools()
+                provider = self.router.get(agent.provider)
                 try:
-                    response = await self.claude.send_message(
+                    response = await provider.send_message(
                         messages=truncated_messages,
                         system=system_prompt,
                         model=agent.model,

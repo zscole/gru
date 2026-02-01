@@ -122,7 +122,8 @@ class TestConfigManager:
         assert result is not None
         assert result.key == "anthropic-key"
         assert result.key_type == KeyType.ANTHROPIC
-        assert config_manager.get("anthropic-key") == key
+        # Check stored value directly (get() includes env fallback)
+        assert config_manager._config.get("anthropic-key") == key
 
     def test_set_from_detection_unknown(self, config_manager):
         """Test auto-detection returns None for unknown keys."""
@@ -165,8 +166,14 @@ class TestSetupWizard:
             yield Path(d)
 
     @pytest.fixture
-    def wizard(self, temp_dir):
-        """Create SetupWizard."""
+    def wizard(self, temp_dir, monkeypatch):
+        """Create SetupWizard with clean environment."""
+        # Clear API keys from environment to test setup detection
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("GRU_TELEGRAM_TOKEN", raising=False)
+        monkeypatch.delenv("GRU_DISCORD_TOKEN", raising=False)
+        monkeypatch.delenv("GRU_SLACK_BOT_TOKEN", raising=False)
+        monkeypatch.delenv("GRU_SLACK_APP_TOKEN", raising=False)
         config = ConfigManager(temp_dir)
         return SetupWizard(config, temp_dir)
 
@@ -178,8 +185,14 @@ class TestSetupWizard:
         assert not status["steps"]["anthropic"]["configured"]
         assert not status["steps"]["messaging"]["configured"]
 
-    def test_get_setup_status_partial(self, temp_dir):
+    def test_get_setup_status_partial(self, temp_dir, monkeypatch):
         """Test setup status with partial configuration."""
+        # Clear env to test stored config only
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("GRU_TELEGRAM_TOKEN", raising=False)
+        monkeypatch.delenv("GRU_DISCORD_TOKEN", raising=False)
+        monkeypatch.delenv("GRU_SLACK_BOT_TOKEN", raising=False)
+        monkeypatch.delenv("GRU_SLACK_APP_TOKEN", raising=False)
         # Need to use the same ConfigManager instance
         config = ConfigManager(temp_dir)
         config.set("anthropic-key", "sk-ant-api03-test123", update_env=False)
@@ -295,9 +308,9 @@ class TestChatConfigIntegration:
         assert "Anthropic" in result["response"]
         assert result["quick_action"]["type"] == "config_keys"
 
-        # Verify key was saved
+        # Verify key was saved (check stored value, not get() which includes env fallback)
         config = ConfigManager(temp_dir)
-        assert config.get("anthropic-key") == "sk-ant-api03-abc123def456-xyz789"
+        assert config._config.get("anthropic-key") == "sk-ant-api03-abc123def456-xyz789"
 
     async def test_chat_shows_setup_status(self, session_manager):
         """Test that 'setup status' shows configuration."""

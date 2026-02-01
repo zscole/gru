@@ -51,6 +51,23 @@ Plus at least one bot interface (Telegram, Discord, or Slack).
 | `GRU_MAX_AGENTS` | `10` | Max concurrent agents |
 | `GRU_PROGRESS_REPORT_INTERVAL` | `0` | Minutes between progress reports (0 = disabled) |
 
+## Ollama (Local Models)
+
+Run models locally for cost savings and unrestricted capabilities.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GRU_OLLAMA_URL` | - | Ollama server URL (e.g., `http://localhost:11434`) |
+| `GRU_OLLAMA_MODEL` | `llama3:8b` | Default Ollama model |
+| `GRU_DEFAULT_PROVIDER` | `anthropic` | Default provider (`anthropic` or `ollama`) |
+
+When Ollama is configured, Gru automatically routes tasks:
+- **Simple cleanup** (formatting, linting) → Ollama
+- **Web search** → Ollama
+- **Complex reasoning** → Claude Opus
+- **Code generation** → Claude Sonnet
+- **Vision tasks** → Claude (required)
+
 ## Webhooks (Vercel)
 
 | Variable | Default | Description |
