@@ -310,6 +310,7 @@ Ready when you are!"""
             "create": self._cmd_create,
             "deploy": self._cmd_deploy,
             "setup": self._cmd_setup,
+            "voice": self._cmd_voice,
         }
 
         handler = handlers.get(command)
@@ -353,6 +354,11 @@ Templates:
   /gru template list
   /gru template use <name>
   /gru template delete <name>
+
+Voice Messages:
+  /gru voice send <chat_id> <text> - Send voice message
+  /gru voice settings - Show voice configuration
+  /gru voice test "text" - Test TTS
 
 You can also chat naturally - just ask questions!
 
@@ -1065,6 +1071,138 @@ Just describe what you want - I'll figure out the rest!"""
             response += "- Use /gru create <template> for quick starts"
 
         await update.message.reply_text(response)  # type: ignore
+    
+    async def _cmd_voice(self, update: Update, args: list[str]) -> None:
+        """Voice message commands."""
+        if not args:
+            help_text = """Voice Commands:
+
+  /gru voice send <chat_id> <text> - Send voice message
+  /gru voice settings - Show voice configuration
+  /gru voice set <setting> <value> - Update setting
+  /gru voice test "Hello world" - Test TTS
+  
+Settings:
+  - tts_provider: eleven_labs, openai, edge
+  - stt_provider: openai, whisper
+  - speed: 0.5 to 2.0
+  - voice_id: provider-specific voice ID
+  
+Examples:
+  /gru voice send 123456789 "Task completed successfully!"
+  /gru voice set speed 1.2
+  /gru voice set tts_provider edge"""
+            await update.message.reply_text(help_text)  # type: ignore
+            return
+            
+        subcmd = args[0].lower()
+        
+        if subcmd == "send" and len(args) >= 3:
+            chat_id = args[1]
+            text = " ".join(args[2:])
+            
+            # Remove quotes if present
+            text = text.strip('"\'')
+            
+            from gru.tools.voice import send_voice_message
+            
+            result = await send_voice_message(chat_id, text)
+            
+            if "error" in result:
+                await update.message.reply_text(f"Error: {result['error']}")  # type: ignore
+            else:
+                await update.message.reply_text(f"Voice message sent to {chat_id}")  # type: ignore
+                
+        elif subcmd == "test" and len(args) >= 2:
+            text = " ".join(args[1:]).strip('"\'')
+            chat_id = str(update.effective_chat.id)  # type: ignore
+            
+            from gru.tools.voice import send_voice_message
+            
+            result = await send_voice_message(chat_id, text)
+            
+            if "error" in result:
+                await update.message.reply_text(f"Test failed: {result['error']}")  # type: ignore
+            else:
+                await update.message.reply_text(f"Test voice message sent!")  # type: ignore
+                
+        elif subcmd == "settings":
+            from gru.tools.voice import get_voice_settings
+            
+            settings = await get_voice_settings()
+            
+            if "error" in settings:
+                await update.message.reply_text(f"Error: {settings['error']}")  # type: ignore
+            else:
+                tts = settings["tts"]
+                stt = settings["stt"]
+                audio = settings["audio"]
+                keys = settings["api_keys_configured"]
+                
+                response = f"""Voice Settings:
+
+TTS (Text-to-Speech):
+  Provider: {tts['provider']}
+  Voice ID: {tts['voice_id']}
+  Speed: {tts['speed']}
+  Quality: {tts['quality']}
+
+STT (Speech-to-Text):
+  Provider: {stt['provider']}
+  Language: {stt['language']}
+
+Audio:
+  Format: {audio['format']}
+  Quality: {audio['quality']}
+  Max Duration: {audio['max_duration']}s
+
+API Keys Configured:
+  ElevenLabs: {'✅' if keys['eleven_labs'] else '❌'}
+  OpenAI: {'✅' if keys['openai'] else '❌'}
+
+Available Providers:
+  TTS: {', '.join(tts['available_providers'])}
+  STT: {', '.join(stt['available_providers'])}"""
+                
+                await update.message.reply_text(response)  # type: ignore
+                
+        elif subcmd == "set" and len(args) >= 3:
+            setting = args[1]
+            value = args[2]
+            
+            from gru.tools.voice import update_voice_settings
+            
+            # Map setting names to parameters
+            kwargs = {}
+            if setting == "tts_provider":
+                kwargs["tts_provider"] = value
+            elif setting == "stt_provider":
+                kwargs["stt_provider"] = value
+            elif setting in ["speed", "tts_speed"]:
+                try:
+                    kwargs["tts_speed"] = float(value)
+                except ValueError:
+                    await update.message.reply_text("Speed must be a number between 0.5 and 2.0")  # type: ignore
+                    return
+            elif setting in ["voice_id", "tts_voice_id"]:
+                kwargs["tts_voice_id"] = value
+            elif setting == "stt_language":
+                kwargs["stt_language"] = value
+            elif setting in ["format", "output_format"]:
+                kwargs["output_format"] = value
+            else:
+                await update.message.reply_text(f"Unknown setting: {setting}")  # type: ignore
+                return
+                
+            result = await update_voice_settings(**kwargs)
+            
+            if "error" in result:
+                await update.message.reply_text(f"Error: {result['error']}")  # type: ignore
+            else:
+                await update.message.reply_text(f"Updated {setting} = {value}")  # type: ignore
+                
+        else:
+            await update.message.reply_text("Invalid voice command. Use /gru voice for help.")  # type: ignore
 
     # Callback handlers
 
@@ -1149,17 +1287,30 @@ Just describe what you want - I'll figure out the rest!"""
 
     # Notification callback
 
-    def notify_callback(self, agent_id: str, message: str) -> None:
+    def notify_callback(self, user_or_agent_id: str, message: str) -> None:
         """Callback for orchestrator notifications."""
         if not self._app:
             return
 
         async def send():
-            for admin_id in self.config.telegram_admin_ids:
+            # If the ID looks like a telegram user ID, send directly to them
+            # Otherwise send to all admins with agent prefix
+            try:
+                user_id = int(user_or_agent_id)
+                # It's a user ID - send directly
                 try:
-                    await self.send_output(admin_id, f"[{agent_id}] {message}")
+                    await self.send_output(user_id, message)
                 except Exception as e:
-                    logger.error(f"Failed to send notification: {e}")
+                    logger.error(f"Failed to send to user {user_id}: {e}")
+            except ValueError:
+                # It's an agent ID - send to all admins
+                # For proactive/reminder notifications, send without prefix
+                prefix = "" if user_or_agent_id == "proactive" else f"[{user_or_agent_id}] "
+                for admin_id in self.config.telegram_admin_ids:
+                    try:
+                        await self.send_output(admin_id, f"{prefix}{message}")
+                    except Exception as e:
+                        logger.error(f"Failed to send notification: {e}")
 
         try:
             loop = asyncio.get_running_loop()
@@ -1694,25 +1845,17 @@ Be concise and helpful."""
             return
 
         text = update.message.text.strip()  # type: ignore
-        system_prompt, _ = await self._build_chat_context()
-        tools = self._get_chat_tools()
+        user_id = str(update.effective_user.id)  # type: ignore
 
         try:
-            response = await self.orchestrator.claude.send_message(
-                messages=[{"role": "user", "content": text}],
-                system=system_prompt,
-                max_tokens=1000,
-                tools=tools,
+            # Use orchestrator.chat() for intent classification and session management
+            result = await self.orchestrator.chat(
+                user_id=user_id,
+                message=text,
+                channel="telegram",
             )
 
-            if response.tool_uses:
-                for tool_use in response.tool_uses:
-                    result = await self._handle_tool_use(tool_use.name, tool_use.input)
-                    for chunk in self._split_message(result):
-                        await update.message.reply_text(chunk)  # type: ignore
-                return
-
-            content = response.content or "I couldn't generate a response."
+            content = result.get("response", "I couldn't generate a response.")
             for chunk in self._split_message(content):
                 await update.message.reply_text(chunk)  # type: ignore
         except Exception as e:
@@ -1789,43 +1932,57 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
             # Download the voice file
             file = await context.bot.get_file(message.voice.file_id)
             file_bytes = await file.download_as_bytearray()
+            
+            # Get voice format
+            voice_format = "ogg"  # Telegram voice messages are usually OGG
+            if hasattr(message.voice, "mime_type"):
+                mime_type = message.voice.mime_type or ""
+                if "mp3" in mime_type:
+                    voice_format = "mp3"
+                elif "wav" in mime_type:
+                    voice_format = "wav"
+                elif "m4a" in mime_type:
+                    voice_format = "m4a"
+            
+            # Use the voice tools for better transcription
+            from gru.tools.voice import transcribe_voice_message
+            
             audio_b64 = base64.b64encode(file_bytes).decode("utf-8")
-
-            # Use Anthropic to transcribe
-            prompt = (
-                "Transcribe this voice message and summarize the task. "
-                "Format: TRANSCRIPTION: [words] TASK: [what they want]"
+            transcription_result = await transcribe_voice_message(
+                audio_data=audio_b64,
+                format=voice_format
             )
-            client = anthropic.Anthropic()
-            response = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1000,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {  # type: ignore[list-item]
-                                "type": "document",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "audio/ogg",
-                                    "data": audio_b64,
-                                },
-                            },
-                        ],
-                    }
-                ],
+            
+            if "error" in transcription_result:
+                await message.reply_text(f"Transcription failed: {transcription_result['error']}")
+                return
+                
+            transcription = transcription_result["transcription"]
+            if not transcription or not transcription.strip():
+                await message.reply_text("Could not transcribe audio. Please try again or type your message.")
+                return
+            
+            # Show transcription with metadata
+            provider = transcription_result.get("provider", "unknown")
+            size = transcription_result.get("audio_size", 0)
+            duration = getattr(message.voice, "duration", 0)
+            
+            await message.reply_text(
+                f"🎤 Transcribed ({provider}, {duration}s, {size} bytes):\n\n"
+                f'"{transcription}"\n\n'
+                f"Spawning agent for this task..."
             )
 
-            transcription = ""
-            if response.content and hasattr(response.content[0], "text"):
-                transcription = getattr(response.content[0], "text", "")
-
-            # Extract task from transcription
-            task = transcription.split("TASK:")[-1].strip() if "TASK:" in transcription else transcription
-
-            await message.reply_text(f"Transcribed: {transcription[:200]}...\n\nSpawning agent for this task...")
+            # Extract task from transcription - look for action words
+            task = transcription.strip()
+            
+            # If transcription is very short, ask for clarification
+            if len(task.split()) < 3:
+                await message.reply_text(
+                    f"Transcription seems short: '{task}'\n\n"
+                    "Please send a more detailed voice message or clarify what you want me to do."
+                )
+                return
 
             agent = await self.orchestrator.spawn_agent(
                 task=task,
@@ -1833,9 +1990,14 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
                 priority="normal",
             )
 
-            await message.reply_text(f"Agent spawned: {agent['id']}")
+            agent_display = self._get_agent_display(agent['id'])
+            await message.reply_text(
+                f"✅ Agent spawned: {agent_display}\n"
+                f"Task: {task[:200]}{'...' if len(task) > 200 else ''}"
+            )
 
         except Exception as e:
+            logger.error(f"Voice message processing failed: {e}")
             await message.reply_text(f"Couldn't process voice message: {e}\nTry typing your request instead!")
 
     def _progress_bar(self, current: int, total: int, width: int = 20) -> str:
@@ -1861,6 +2023,14 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
         self._app.add_handler(MessageHandler(filters.VOICE, self.handle_voice))
         # Casual message handler (must be last)
         self._app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+
+        # Initialize voice tools
+        from gru.tools.voice import set_voice_dependencies
+        set_voice_dependencies(self.config, self.orchestrator)
+
+        # Initialize research tools
+        from gru.tools.research import set_research_dependencies
+        set_research_dependencies(self.config, self.orchestrator)
 
         # Set up orchestrator callbacks
         self.orchestrator.set_notify_callback(self.notify_callback)

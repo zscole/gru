@@ -19,7 +19,12 @@ import anthropic
 from gru.claude import DEFAULT_TOOLS, ClaudeClient, Response, ToolResult
 from gru.coordinator import Coordinator
 from gru.mcp import MCPClient
+from gru.memory import MemoryStore
+from gru.proactive import ProactiveEngine, setup_default_triggers
 from gru.scheduler import Scheduler
+from gru.agent import Agent as ChatAgent
+from gru.session import SessionManager
+from gru.actions.executor import ActionExecutor
 from gru.worktree import (
     WorktreeInfo,
     cleanup_worktree,
@@ -99,8 +104,10 @@ class Agent:
         workdir: str,
         orchestrator: Orchestrator,
         worktree_info: WorktreeInfo | None = None,
+        name: str | None = None,
     ) -> None:
         self.id = agent_id
+        self.name = name
         self.task = task
         self.model = model
         self.supervised = supervised
@@ -120,6 +127,7 @@ class Agent:
         self._token_alert_sent: bool = False
         self._stuck_alert_sent: bool = False
         self.live_output: bool = False  # Stream output to chat in real-time
+        self._report_delivered: bool = False  # Track if agent delivered a formatted report
 
     def cancel(self) -> None:
         """Mark agent as cancelled."""
@@ -248,16 +256,80 @@ class Orchestrator:
         self.scheduler = Scheduler(db, config.max_concurrent_agents)
         self.coordinator = Coordinator(db)
         self.mcp = MCPClient(mcp_config_path)
+        self.memory = MemoryStore(db, config.data_dir) if config.memory_enabled else None
+        self.proactive = ProactiveEngine(config, db, self.memory) if config.memory_enabled else None
+        self.knowledge_graph = None  # Initialized lazily with memory
+        self.autonomous_actions = None  # Initialized lazily
+        self.self_heal = None  # Initialized lazily
+        self.session_manager: SessionManager | None = None
+        self.action_executor: ActionExecutor | None = None
+        self._chat_agent: ChatAgent | None = None
         self._agents: dict[str, Agent] = {}
         self._ralph_loops: dict[str, dict[str, Any]] = {}  # Track Ralph loop metadata
         self._running = False
         self._notify_callback: Callable[[str, str], None] | None = None
         self._approval_callback: Callable[[str, dict], asyncio.Future] | None = None
         self._cancel_approval_callback: Callable[[str], Any] | None = None
+        self._memory_initialized = False
+        self._proactive_initialized = False
+        self._knowledge_initialized = False
+        self._actions_initialized = False
+        self._self_heal_initialized = False
+        self._google_connector = None
+        self._slack_connector = None
+
+    async def _initialize_google_connector(self) -> None:
+        """Initialize Google connector if credentials exist."""
+        try:
+            from gru.connectors.google import GoogleConnector
+            from gru.actions.services.google import set_google_connector as set_actions_google
+            from gru.tools.google import set_google_connector as set_tools_google
+
+            connector = GoogleConnector(self.config.data_dir)
+            if connector.load_token():
+                self._google_connector = connector
+                # Set connector for both actions and tools modules
+                set_actions_google(connector)
+                set_tools_google(connector)
+                if self.proactive:
+                    self.proactive.set_google_connector(connector)
+                logger.info("Google connector initialized")
+            else:
+                logger.warning("Google connector: no valid token found. Run 'gru google login'.")
+        except Exception as e:
+            logger.debug(f"Google connector not initialized: {e}")
+
+    async def _initialize_slack_connector(self) -> None:
+        """Initialize Slack connector if token exists."""
+        try:
+            from gru.connectors.slack import SlackConnector
+            from gru.tools.slack import set_slack_connector
+
+            connector = SlackConnector(self.config.data_dir)
+            if connector.load_token():
+                self._slack_connector = connector
+                set_slack_connector(connector)
+                if self.proactive:
+                    self.proactive.set_slack_connector(connector)
+                logger.info("Slack connector initialized")
+            else:
+                logger.debug("Slack connector: no token found. Run 'gru slack setup'.")
+        except Exception as e:
+            logger.debug(f"Slack connector not initialized: {e}")
+
+        # Set up research Claude client
+        try:
+            from gru.actions.services.research import set_research_claude
+            set_research_claude(self.claude)
+            logger.debug("Research Claude client configured")
+        except Exception as e:
+            logger.debug(f"Research client not initialized: {e}")
 
     def set_notify_callback(self, callback: Callable[[str, str], None]) -> None:
         """Set callback for notifications."""
         self._notify_callback = callback
+        if self.proactive:
+            self.proactive.set_notify_callback(callback)
 
     def set_approval_callback(self, callback: Callable[[str, dict], asyncio.Future]) -> None:
         """Set callback for approval requests."""
@@ -447,6 +519,7 @@ class Orchestrator:
             workdir=effective_workdir,
             orchestrator=self,
             worktree_info=worktree_info,
+            name=name,
         )
         agent.live_output = live_output
         self._agents[agent_id] = agent
@@ -555,6 +628,65 @@ class Orchestrator:
         )
         await self.db.update_task(task_id, status="running", started_at=datetime.now().isoformat())
 
+        # Initialize memory if enabled and not yet done
+        if self.memory and not self._memory_initialized:
+            try:
+                await self.memory.initialize()
+                self._memory_initialized = True
+            except Exception as e:
+                logger.warning(f"Memory initialization failed: {e}")
+
+        # Initialize knowledge graph if memory is enabled
+        if self.memory and self._memory_initialized and not self._knowledge_initialized:
+            try:
+                from gru.knowledge_graph import KnowledgeGraph
+                from gru.tools.knowledge import set_knowledge_dependencies
+
+                self.knowledge_graph = KnowledgeGraph(self.db, self.memory)
+                await self.knowledge_graph.initialize()
+                set_knowledge_dependencies(self.knowledge_graph, self.claude)
+                self._knowledge_initialized = True
+                logger.info("Knowledge graph initialized")
+            except Exception as e:
+                logger.warning(f"Knowledge graph initialization failed: {e}")
+
+        # Initialize autonomous action engine
+        if not self._actions_initialized:
+            try:
+                from gru.actions.autonomous import AutonomousActionEngine
+                from gru.tools.actions import set_action_engine
+                from gru.actions.handlers import set_google_connector as set_handlers_google
+                from gru.actions.handlers import set_slack_connector as set_handlers_slack
+
+                self.autonomous_actions = AutonomousActionEngine(self.db)
+                await self.autonomous_actions.initialize()
+                set_action_engine(self.autonomous_actions)
+
+                # Set connectors for handlers
+                if self._google_connector:
+                    set_handlers_google(self._google_connector)
+                if self._slack_connector:
+                    set_handlers_slack(self._slack_connector)
+
+                # Set notification callback
+                if self._notify_callback:
+                    self.autonomous_actions.set_notification_callback(self._notify_callback)
+
+                self._actions_initialized = True
+                logger.info("Autonomous action engine initialized")
+            except Exception as e:
+                logger.warning(f"Autonomous action engine initialization failed: {e}")
+
+        # Initialize proactive engine if enabled
+        if self.proactive and not self._proactive_initialized:
+            try:
+                await self.proactive.initialize()
+                await setup_default_triggers(self.proactive)
+                await self.proactive.start()
+                self._proactive_initialized = True
+            except Exception as e:
+                logger.warning(f"Proactive engine initialization failed: {e}")
+
         # Initialize messages with task
         agent_data = await self.db.get_agent(agent.id)
         system_prompt = agent_data.get("system_prompt") if agent_data else None
@@ -562,6 +694,27 @@ class Orchestrator:
         # Use default agent system prompt if none provided
         if not system_prompt:
             system_prompt = DEFAULT_AGENT_SYSTEM.format(workdir=agent.workdir)
+
+        # Inject memory context if available
+        if self.memory and self._memory_initialized:
+            try:
+                # Get personalized context (more relevant than basic context)
+                memory_context = await self.memory.get_personalized_context(
+                    agent.task, limit=self.config.memory_context_limit
+                )
+                if memory_context:
+                    system_prompt = f"{system_prompt}\n\n{memory_context}"
+            except Exception as e:
+                logger.warning(f"Memory retrieval failed: {e}")
+
+        # Inject observation summary if available
+        if self.proactive and self._proactive_initialized:
+            try:
+                obs_summary = await self.proactive.get_observation_summary()
+                if obs_summary:
+                    system_prompt = f"{system_prompt}\n\n{obs_summary}"
+            except Exception as e:
+                logger.warning(f"Observation retrieval failed: {e}")
 
         agent.messages = [{"role": "user", "content": agent.task}]
         await self.db.add_message(agent.id, "user", agent.task)
@@ -699,8 +852,73 @@ class Orchestrator:
                 result=response.content if not agent.is_cancelled else None,
             )
 
-            output_preview = response.content[:1000] if response.content else "No output"
-            await self.notify(agent.id, f"Agent {agent.id} {final_status}: {output_preview}")
+            # Record performance metrics for self-heal
+            if self.self_heal:
+                self.self_heal.record_performance(
+                    operation=f"agent_{agent.id}",
+                    duration_ms=agent.runtime_seconds * 1000,
+                    tokens=agent.total_tokens,
+                )
+
+            # Extract facts from conversation if memory enabled
+            if (
+                self.memory
+                and self._memory_initialized
+                and self.config.memory_extraction_enabled
+                and not agent.is_cancelled
+            ):
+                try:
+                    # Extract facts
+                    extracted = await self.memory.extract_facts_from_conversation(
+                        agent.messages, agent.id, self.claude
+                    )
+                    if extracted:
+                        logger.info(f"Agent {agent.id}: extracted {len(extracted)} facts")
+
+                    # Extract entities and relationships for knowledge graph
+                    if self.knowledge_graph and self._knowledge_initialized:
+                        try:
+                            kg_counts = await self.knowledge_graph.extract_from_conversation(
+                                agent.messages, agent.id, self.claude
+                            )
+                            if kg_counts.get("entities", 0) > 0:
+                                logger.info(
+                                    f"Agent {agent.id}: extracted {kg_counts['entities']} entities, "
+                                    f"{kg_counts['relationships']} relationships"
+                                )
+                        except Exception as e:
+                            logger.warning(f"Knowledge graph extraction failed: {e}")
+
+                    # Detect observations (follow-ups, deadlines, etc.)
+                    if self.proactive and self._proactive_initialized:
+                        observations = await self.memory.detect_observations(
+                            agent.messages, self.claude
+                        )
+                        for obs in observations:
+                            await self.proactive.add_observation(
+                                content=obs.get("content", ""),
+                                category=obs.get("category", "note"),
+                                importance=obs.get("importance", 0.5),
+                                source=f"agent:{agent.id}",
+                                expires_in_hours=obs.get("expires_hours"),
+                            )
+
+                    # Store conversation summary for future retrieval
+                    summary = await self.memory.get_conversation_summary(agent.messages)
+                    if summary:
+                        await self.memory.store_conversation_embedding(
+                            summary,
+                            agent.id,
+                            metadata={"task": agent.task[:200]},
+                        )
+
+                except Exception as e:
+                    logger.warning(f"Post-completion processing failed for agent {agent.id}: {e}")
+
+            # Only send default completion message if agent didn't deliver a formatted report
+            if not agent._report_delivered:
+                output_preview = response.content[:1000] if response.content else "No output"
+                await self.notify(agent.id, f"Agent {agent.id} {final_status}: {output_preview}")
 
         except Exception as e:
             error_msg = friendly_error(e)
@@ -857,6 +1075,26 @@ class Orchestrator:
                 tool_input.get("key", ""),
                 tool_input.get("value", ""),
             ),
+            "deliver_report": lambda: self._deliver_report(
+                agent,
+                tool_input.get("report", ""),
+                tool_input.get("summary"),
+            ),
+            "spawn_sub_agent": lambda: self._spawn_sub_agent(
+                agent,
+                tool_input.get("task", ""),
+                tool_input.get("name"),
+                tool_input.get("wait_for_result", True),
+            ),
+            "decompose_task": lambda: self._decompose_task(
+                tool_input.get("task", ""),
+                tool_input.get("context"),
+            ),
+            "report_progress": lambda: self._report_progress(
+                agent,
+                tool_input.get("status", ""),
+                tool_input.get("percent_complete"),
+            ),
         }
 
         handler = handlers.get(tool_name)
@@ -944,6 +1182,161 @@ class Orchestrator:
         except Exception as e:
             return f"Error searching files: {e}"
 
+    async def _deliver_report(self, agent: Agent, report: str, summary: str | None) -> str:
+        """Deliver a formatted report to the user."""
+        if not report.strip():
+            return "Error: Report cannot be empty"
+
+        # Mark that agent has delivered a report (to suppress default completion message)
+        agent._report_delivered = True
+
+        # Send the report to the user
+        await self.notify(agent.id, report)
+
+        # If this is a PoC agent, save to history to prevent repeats
+        is_poc_agent = (
+            (agent.name and "poc" in agent.name.lower()) or
+            "poc" in agent.task.lower()[:200]
+        )
+        if is_poc_agent:
+            try:
+                from gru.tools.research import save_poc_from_report
+                if save_poc_from_report(report):
+                    logger.info(f"Saved PoC from agent {agent.id} to history")
+                else:
+                    logger.warning(f"Could not extract GitHub URL from PoC report")
+            except Exception as e:
+                logger.warning(f"Failed to save PoC to history: {e}")
+
+        logger.info(f"Agent {agent.id} delivered report: {summary or report[:50]}...")
+        return "Report delivered successfully"
+
+    async def _spawn_sub_agent(
+        self,
+        parent_agent: Agent,
+        task: str,
+        name: str | None,
+        wait_for_result: bool,
+    ) -> str:
+        """Spawn a sub-agent to handle part of the parent's task."""
+        if not task.strip():
+            return "Error: Task cannot be empty"
+
+        sub_name = f"{parent_agent.id}-{name or 'sub'}"
+
+        try:
+            # Spawn the sub-agent
+            sub_agent_info = await self.spawn_agent(
+                task=task,
+                name=sub_name,
+                supervised=False,
+                live_output=False,
+                workdir=parent_agent.workdir,
+            )
+
+            sub_agent_id = sub_agent_info["id"]
+            logger.info(f"Agent {parent_agent.id} spawned sub-agent {sub_agent_id}")
+
+            if not wait_for_result:
+                return json.dumps({
+                    "status": "spawned",
+                    "sub_agent_id": sub_agent_id,
+                    "message": "Sub-agent spawned. Use get_shared_context to check for results later.",
+                })
+
+            # Wait for sub-agent to complete (with timeout)
+            max_wait = 300  # 5 minutes max wait
+            start = datetime.now()
+
+            while (datetime.now() - start).seconds < max_wait:
+                status = await self.get_agent(sub_agent_id)
+                if status and status.get("status") in ("completed", "failed"):
+                    if status.get("status") == "failed":
+                        return json.dumps({
+                            "status": "failed",
+                            "sub_agent_id": sub_agent_id,
+                            "error": status.get("error", "Sub-agent failed"),
+                        })
+
+                    # Get the result from task record
+                    task_record = await self.db.get_task(sub_agent_id)
+                    task_result = task_record.get("result") if task_record else None
+                    return json.dumps({
+                        "status": "completed",
+                        "sub_agent_id": sub_agent_id,
+                        "result": task_result or "Sub-agent completed but no result captured",
+                    })
+
+                await asyncio.sleep(2)
+
+            return json.dumps({
+                "status": "timeout",
+                "sub_agent_id": sub_agent_id,
+                "message": "Sub-agent still running after 5 minutes. Check status later.",
+            })
+
+        except Exception as e:
+            logger.error(f"Failed to spawn sub-agent: {e}")
+            return json.dumps({"status": "error", "error": str(e)})
+
+    async def _decompose_task(self, task: str, context: str | None) -> str:
+        """Use Claude to decompose a complex task into subtasks."""
+        if not task.strip():
+            return "Error: Task cannot be empty"
+
+        prompt = f"""Break down this task into clear, actionable subtasks:
+
+TASK: {task}
+
+{f"CONTEXT: {context}" if context else ""}
+
+Return a JSON object with:
+{{
+  "summary": "One-line summary of what needs to be done",
+  "subtasks": [
+    {{
+      "id": 1,
+      "name": "short name",
+      "description": "what to do",
+      "depends_on": [],  // IDs of subtasks this depends on
+      "can_parallelize": true/false  // can this run in parallel with others
+    }}
+  ],
+  "estimated_complexity": "simple|moderate|complex",
+  "suggested_approach": "sequential|parallel|mixed"
+}}
+
+Keep subtasks concrete and actionable. Don't over-decompose simple things."""
+
+        try:
+            response = await self.claude.send_message(
+                messages=[{"role": "user", "content": prompt}],
+                system="You are a task planning assistant. Return only valid JSON, no other text.",
+                max_tokens=1000,
+            )
+            return response.content
+        except Exception as e:
+            logger.error(f"Failed to decompose task: {e}")
+            return json.dumps({"error": str(e)})
+
+    async def _report_progress(
+        self,
+        agent: Agent,
+        status: str,
+        percent_complete: int | None,
+    ) -> str:
+        """Send a progress update to the user."""
+        if not status.strip():
+            return "Error: Status cannot be empty"
+
+        message = status
+        if percent_complete is not None:
+            message = f"[{percent_complete}%] {status}"
+
+        await self.notify(agent.id, message)
+        logger.info(f"Agent {agent.id} progress: {message}")
+        return "Progress reported"
+
     async def _request_human_input(self, agent: Agent, question: str, options: list[str] | None) -> str:
         """Request human input via approval callback."""
         if not self._approval_callback:
@@ -1025,6 +1418,16 @@ class Orchestrator:
         """Start the orchestrator main loop."""
         self._running = True
 
+        # Initialize self-heal engine
+        if not self._self_heal_initialized:
+            try:
+                from gru.self_heal import init_self_heal
+                self.self_heal = init_self_heal(self)
+                self._self_heal_initialized = True
+                logger.info("Self-heal engine initialized")
+            except Exception as e:
+                logger.warning(f"Self-heal engine not initialized: {e}")
+
         while self._running:
             try:
                 # Check for starvation
@@ -1051,6 +1454,9 @@ class Orchestrator:
             except Exception as e:
                 # Log error but keep running
                 logger.error(f"Orchestrator error: {e}")
+                # Record error for self-heal analysis
+                if self.self_heal:
+                    self.self_heal.record_error("orchestrator_loop", e)
                 await asyncio.sleep(1)
 
     async def stop(self) -> None:
@@ -1095,6 +1501,107 @@ class Orchestrator:
     async def search_agents(self, query: str) -> list[dict[str, Any]]:
         """Search agents by task, name, or id."""
         return await self.db.search_agents(query)
+
+    async def initialize_sessions(self) -> None:
+        """Initialize the chat agent for conversational interactions."""
+        if self._chat_agent is not None:
+            return
+
+        # Initialize memory if needed
+        if self.memory and not self._memory_initialized:
+            await self.memory.initialize()
+            self._memory_initialized = True
+
+        # Initialize proactive engine if needed
+        if self.proactive and not self._proactive_initialized:
+            await self.proactive.initialize()
+            await setup_default_triggers(self.proactive)
+            await self.proactive.start()
+            self._proactive_initialized = True
+
+        # Initialize Google connector if configured
+        await self._initialize_google_connector()
+
+        # Initialize Slack connector if configured
+        await self._initialize_slack_connector()
+
+        # Create the new tool-based chat agent
+        self._chat_agent = ChatAgent(
+            claude=self.claude,
+            memory=self.memory,
+            proactive=self.proactive,
+            orchestrator=self,
+        )
+        await self._chat_agent.initialize()
+        logger.info("Chat agent initialized with tools")
+
+    async def chat(
+        self,
+        user_id: str,
+        message: str,
+        channel: str = "cli",
+    ) -> dict[str, Any]:
+        """Process a chat message and return response.
+
+        This is the main entry point for conversational interactions.
+        Uses the tool-based agent for natural conversation with tool use.
+
+        Args:
+            user_id: User identifier
+            message: The user's message
+            channel: Channel identifier (cli, telegram, discord, etc.)
+
+        Returns:
+            Dict with response
+        """
+        await self.initialize_sessions()
+        if self._chat_agent is None:
+            raise RuntimeError("Chat agent failed to initialize")
+
+        response = await self._chat_agent.chat(
+            user_id=user_id,
+            message=message,
+            channel=channel,
+        )
+
+        return {
+            "response": response,
+            "escalate": False,
+            "escalate_task": None,
+            "quick_action": None,
+            "action_result": None,
+        }
+
+    async def get_session(self, user_id: str, channel: str = "cli") -> dict[str, Any] | None:
+        """Get conversation info for a user/channel."""
+        await self.initialize_sessions()
+        if not self._chat_agent:
+            return None
+
+        conv = self._chat_agent._get_conversation(user_id, channel)
+        return {
+            "user_id": conv.user_id,
+            "channel": conv.channel,
+            "message_count": len(conv.messages),
+            "created_at": conv.created_at.isoformat(),
+            "last_active": conv.last_active.isoformat(),
+        }
+
+    async def reset_session(self, user_id: str, channel: str = "cli") -> bool:
+        """Reset/clear a user's conversation."""
+        await self.initialize_sessions()
+        if not self._chat_agent:
+            return False
+
+        self._chat_agent.reset_conversation(user_id, channel)
+        return True
+
+    async def set_persona(self, user_id: str, persona: str) -> bool:
+        """Set user's default persona (deprecated - now uses tool-based agent)."""
+        # Personas are no longer used with the tool-based agent
+        # The agent adapts based on user preferences in memory
+        logger.info(f"set_persona called but personas are deprecated: {persona}")
+        return True
 
     def get_agent_cost(self, agent_id: str) -> tuple[int, int, str] | None:
         """Get token usage and cost for an agent."""

@@ -28,11 +28,52 @@ GRU_TELEGRAM_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
 GRU_ADMIN_IDS=123456789
 ```
 
+## Voice Messages
+
+Gru supports sending and receiving voice messages through Telegram:
+
+### Receiving Voice Messages
+- Send a voice message to your Gru bot
+- Gru automatically transcribes it and processes as text
+- Supports all major audio formats (OGG, MP3, WAV)
+
+### Sending Voice Messages
+```
+/gru voice send <chat_id> <text>    # Send TTS to specific chat
+/gru voice test "Hello"             # Test TTS in current chat
+/gru voice settings                 # View configuration
+/gru voice set tts_provider edge    # Change TTS provider
+```
+
+### Voice Configuration
+
+**Text-to-Speech Providers:**
+- `eleven_labs` - High quality (requires API key)
+- `openai` - Good quality (requires API key)
+- `edge` - Free Microsoft voices
+
+**Speech-to-Text Providers:**
+- `claude` - Uses Claude for transcription (recommended)
+- `openai` - OpenAI Whisper API (requires key)
+- `whisper` - Local Whisper (slower)
+
+**Environment Variables for Voice:**
+```bash
+# Optional - for premium TTS
+GRU_ELEVEN_LABS_API_KEY=your_key_here
+GRU_OPENAI_API_KEY=your_key_here
+```
+
 ## Troubleshooting
 
 **Bot not responding:**
 - Verify `GRU_ADMIN_IDS` matches your user ID exactly
 - Check `GRU_TELEGRAM_TOKEN` has no extra spaces
 - Restart Gru
+
+**Voice messages not working:**
+- Check audio file format is supported (OGG, MP3, WAV)
+- Verify API keys if using premium providers
+- Try `/gru voice settings` to check configuration
 
 [Back to README](../README.md)

@@ -391,4 +391,80 @@ DEFAULT_TOOLS = [
             "required": ["key", "value"],
         },
     ),
+    ToolDefinition(
+        name="deliver_report",
+        description="Send a final, formatted report to the user. Use this for your final output instead of just ending the task. The report should be conversational and human-readable.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "report": {
+                    "type": "string",
+                    "description": "The formatted report to send to the user. Should be conversational, clear, and actionable. No raw data or technical jargon.",
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "A one-line summary (for notifications). Keep under 100 chars.",
+                },
+            },
+            "required": ["report"],
+        },
+    ),
+    ToolDefinition(
+        name="spawn_sub_agent",
+        description="Spawn a sub-agent to handle part of your task. Use this to delegate specific subtasks. The sub-agent works independently and returns results when done. You can spawn multiple sub-agents to work in parallel.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "Clear description of what the sub-agent should accomplish. Be specific about expected outputs.",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Short name for the sub-agent (e.g., 'researcher', 'coder', 'reviewer')",
+                },
+                "wait_for_result": {
+                    "type": "boolean",
+                    "description": "If true, wait for sub-agent to complete and get result. If false, spawn and continue (check status later). Default: true",
+                },
+            },
+            "required": ["task"],
+        },
+    ),
+    ToolDefinition(
+        name="decompose_task",
+        description="Break down a complex task into subtasks. Returns a structured plan. Use this before starting complex multi-step work.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "The complex task to decompose",
+                },
+                "context": {
+                    "type": "string",
+                    "description": "Additional context that might affect the plan",
+                },
+            },
+            "required": ["task"],
+        },
+    ),
+    ToolDefinition(
+        name="report_progress",
+        description="Send a progress update to the user. Use this for meaningful milestones, not every small step. Keep updates brief and informative.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "description": "Brief status message (e.g., 'Researching options...', 'Found 3 flights, comparing prices...')",
+                },
+                "percent_complete": {
+                    "type": "integer",
+                    "description": "Optional: estimated percent complete (0-100)",
+                },
+            },
+            "required": ["status"],
+        },
+    ),
 ]

@@ -85,6 +85,31 @@ Ralph loops enable autonomous iterative development where the AI agent continuou
 /gru template delete <name>        # Delete template
 ```
 
+## Voice Messages (Telegram)
+
+```
+/gru voice send <chat_id> <text>    # Send voice message to chat
+/gru voice test "Hello world"       # Test TTS in current chat
+/gru voice settings                 # Show voice configuration
+/gru voice set <setting> <value>    # Update voice settings
+```
+
+### Voice Settings
+
+| Setting | Options | Description |
+|---------|---------|-------------|
+| `tts_provider` | eleven_labs, openai, edge | Text-to-speech provider |
+| `stt_provider` | claude, openai, whisper | Speech-to-text provider |
+| `speed` | 0.5 to 2.0 | Voice speed |
+| `voice_id` | Provider-specific | Voice selection |
+
+### Voice Message Support
+
+- **Incoming voice messages:** Automatically transcribed to text and processed
+- **Outgoing voice messages:** Send TTS responses via voice commands
+- **Supported formats:** OGG, MP3, WAV (auto-conversion)
+- **Configuration:** Settings persist across restarts
+
 ## Project Templates
 
 | Template | Creates |

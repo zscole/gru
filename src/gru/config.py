@@ -80,6 +80,25 @@ class Config:
     # Encryption
     master_key_iterations: int = 480000
 
+    # Memory system
+    memory_enabled: bool = True
+    memory_extraction_enabled: bool = True  # Auto-extract facts from conversations
+    memory_context_limit: int = 10  # Max facts to inject into context
+
+    # Browser/Actions
+    browser_mode: str = "headless"  # headless or headed
+    browser_type: str = "chromium"  # chromium, firefox, webkit
+    browser_timeout: int = 30000  # ms
+    action_confirm_payments: bool = True  # Require confirmation for purchases
+    
+    # Voice Messages
+    voice_enabled: bool = True  # Enable voice message support
+    voice_tts_provider: str = "edge"  # TTS provider: eleven_labs, openai, edge
+    voice_stt_provider: str = "openai"  # STT provider: openai, whisper (claude not supported)
+    voice_default_speed: float = 1.0  # Default speech speed
+    voice_max_text_length: int = 4000  # Max characters for TTS
+    voice_auto_reply: bool = False  # Auto-reply to voice messages with voice
+
     def __post_init__(self) -> None:
         self.db_path = self.data_dir / "gru.db"
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -136,6 +155,19 @@ class Config:
             webhook_port=int(os.getenv("GRU_WEBHOOK_PORT", "8080")),
             webhook_secret=os.getenv("GRU_WEBHOOK_SECRET", ""),
             progress_report_interval=int(os.getenv("GRU_PROGRESS_REPORT_INTERVAL", "0")),
+            memory_enabled=os.getenv("GRU_MEMORY_ENABLED", "true").lower() == "true",
+            memory_extraction_enabled=os.getenv("GRU_MEMORY_EXTRACTION", "true").lower() == "true",
+            memory_context_limit=int(os.getenv("GRU_MEMORY_CONTEXT_LIMIT", "10")),
+            browser_mode=os.getenv("GRU_BROWSER_MODE", "headless"),
+            browser_type=os.getenv("GRU_BROWSER_TYPE", "chromium"),
+            browser_timeout=int(os.getenv("GRU_BROWSER_TIMEOUT", "30000")),
+            action_confirm_payments=os.getenv("GRU_ACTION_CONFIRM_PAYMENTS", "true").lower() == "true",
+            voice_enabled=os.getenv("GRU_VOICE_ENABLED", "true").lower() == "true",
+            voice_tts_provider=os.getenv("GRU_TTS_PROVIDER", "edge"),
+            voice_stt_provider=os.getenv("GRU_STT_PROVIDER", "openai"),
+            voice_default_speed=float(os.getenv("GRU_VOICE_SPEED", "1.0")),
+            voice_max_text_length=int(os.getenv("GRU_VOICE_MAX_LENGTH", "4000")),
+            voice_auto_reply=os.getenv("GRU_VOICE_AUTO_REPLY", "false").lower() == "true",
         )
 
     def validate(self) -> list[str]:

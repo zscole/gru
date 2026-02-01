@@ -118,6 +118,34 @@ CREATE TABLE IF NOT EXISTS templates (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Memory facts table (structured knowledge about the user)
+CREATE TABLE IF NOT EXISTS memory_facts (
+    id TEXT PRIMARY KEY,
+    fact_type TEXT NOT NULL CHECK(fact_type IN ('preference', 'entity', 'decision', 'relationship', 'context')),
+    subject TEXT NOT NULL,
+    predicate TEXT NOT NULL,
+    object TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    source_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
+    source_conversation TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_accessed_at TEXT,
+    access_count INTEGER DEFAULT 0,
+    superseded_by TEXT REFERENCES memory_facts(id) ON DELETE SET NULL,
+    active INTEGER NOT NULL DEFAULT 1
+);
+
+-- Memory embeddings metadata (actual vectors stored in ChromaDB)
+CREATE TABLE IF NOT EXISTS memory_embeddings (
+    id TEXT PRIMARY KEY,
+    content_type TEXT NOT NULL CHECK(content_type IN ('conversation', 'fact', 'task_summary')),
+    content_preview TEXT NOT NULL,
+    source_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    metadata JSON
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
@@ -128,3 +156,6 @@ CREATE INDEX IF NOT EXISTS idx_approvals_agent ON approvals(agent_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_agent ON conversations(agent_id);
 CREATE INDEX IF NOT EXISTS idx_agent_messages_to ON agent_messages(to_agent, read);
 CREATE INDEX IF NOT EXISTS idx_agent_messages_task ON agent_messages(task_id);
+CREATE INDEX IF NOT EXISTS idx_memory_facts_type ON memory_facts(fact_type, active);
+CREATE INDEX IF NOT EXISTS idx_memory_facts_subject ON memory_facts(subject, active);
+CREATE INDEX IF NOT EXISTS idx_memory_embeddings_type ON memory_embeddings(content_type);

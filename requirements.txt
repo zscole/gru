@@ -5,3 +5,11 @@ aiosqlite>=0.20.0
 click>=8.1.0
 cryptography>=42.0.0
 python-dotenv>=1.0.0
+-e 
+# Voice message support
+httpx>=0.25.0
+edge-tts>=6.1.0
+
+# Optional voice dependencies (install separately if needed)
+# openai-whisper  # For local Whisper transcription
+# openai>=1.0.0   # For OpenAI TTS/STT

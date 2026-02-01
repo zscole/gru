@@ -44,6 +44,9 @@ class Database:
         # Set up FTS table and triggers
         await self._migrate_fts()
 
+        # Add memory tables if not present
+        await self._migrate_memory_tables()
+
         await self._conn.commit()
 
     async def _migrate_worktree_columns(self) -> None:
@@ -68,6 +71,60 @@ class Database:
             if col_name not in columns:
                 with contextlib.suppress(Exception):
                     await self._conn.execute(sql)
+
+    async def _migrate_memory_tables(self) -> None:
+        """Add memory tables if they don't exist."""
+        if not self._conn:
+            return
+
+        # Check if memory_facts table exists
+        cursor = await self._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='memory_facts'"
+        )
+        if not await cursor.fetchone():
+            await self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS memory_facts (
+                    id TEXT PRIMARY KEY,
+                    fact_type TEXT NOT NULL CHECK(fact_type IN ('preference', 'entity', 'decision', 'relationship', 'context')),
+                    subject TEXT NOT NULL,
+                    predicate TEXT NOT NULL,
+                    object TEXT NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 1.0,
+                    source_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
+                    source_conversation TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    last_accessed_at TEXT,
+                    access_count INTEGER DEFAULT 0,
+                    superseded_by TEXT REFERENCES memory_facts(id) ON DELETE SET NULL,
+                    active INTEGER NOT NULL DEFAULT 1
+                )
+            """)
+            await self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memory_facts_type ON memory_facts(fact_type, active)"
+            )
+            await self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memory_facts_subject ON memory_facts(subject, active)"
+            )
+
+        # Check if memory_embeddings table exists
+        cursor = await self._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='memory_embeddings'"
+        )
+        if not await cursor.fetchone():
+            await self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS memory_embeddings (
+                    id TEXT PRIMARY KEY,
+                    content_type TEXT NOT NULL CHECK(content_type IN ('conversation', 'fact', 'task_summary')),
+                    content_preview TEXT NOT NULL,
+                    source_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    metadata JSON
+                )
+            """)
+            await self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memory_embeddings_type ON memory_embeddings(content_type)"
+            )
 
     async def _migrate_fts(self) -> None:
         """Set up full-text search for agents table."""
