@@ -189,9 +189,8 @@ class ConfigManager:
             return env_val
 
         # Special mappings
-        if key == "anthropic-key":
-            if env_val := os.getenv("ANTHROPIC_API_KEY"):
-                return env_val
+        if key == "anthropic-key" and (env_val := os.getenv("ANTHROPIC_API_KEY")):
+            return env_val
 
         return self._config.get(key, default)
 
@@ -210,7 +209,9 @@ class ConfigManager:
         key_type = detect_key_type(value)
 
         # Determine if this is a secret
-        is_secret = key_type != KeyType.UNKNOWN or "key" in key.lower() or "token" in key.lower() or "secret" in key.lower()
+        is_secret = (
+            key_type != KeyType.UNKNOWN or "key" in key.lower() or "token" in key.lower() or "secret" in key.lower()
+        )
 
         # Store in config
         self._config[key] = value
@@ -362,8 +363,8 @@ class SetupWizard:
         has_telegram = bool(self.config.get("telegram-token") or os.getenv("GRU_TELEGRAM_TOKEN"))
         has_discord = bool(self.config.get("discord-token") or os.getenv("GRU_DISCORD_TOKEN"))
         has_slack = bool(
-            (self.config.get("slack-bot-token") or os.getenv("GRU_SLACK_BOT_TOKEN")) and
-            (self.config.get("slack-app-token") or os.getenv("GRU_SLACK_APP_TOKEN"))
+            (self.config.get("slack-bot-token") or os.getenv("GRU_SLACK_BOT_TOKEN"))
+            and (self.config.get("slack-app-token") or os.getenv("GRU_SLACK_APP_TOKEN"))
         )
 
         status["steps"]["messaging"] = {
@@ -392,10 +393,10 @@ class SetupWizard:
 
         # Check admin ID
         has_admin = bool(
-            os.getenv("GRU_ADMIN_IDS") or
-            os.getenv("GRU_DISCORD_ADMIN_IDS") or
-            os.getenv("GRU_SLACK_ADMIN_IDS") or
-            self.config.get("admin-id")
+            os.getenv("GRU_ADMIN_IDS")
+            or os.getenv("GRU_DISCORD_ADMIN_IDS")
+            or os.getenv("GRU_SLACK_ADMIN_IDS")
+            or self.config.get("admin-id")
         )
         status["steps"]["admin"] = {
             "name": "Admin User",
@@ -405,11 +406,7 @@ class SetupWizard:
         }
 
         # Check if complete
-        required_complete = all(
-            step["configured"]
-            for step in status["steps"].values()
-            if step["required"]
-        )
+        required_complete = all(step["configured"] for step in status["steps"].values() if step["required"])
         status["complete"] = required_complete
 
         return status
@@ -429,7 +426,7 @@ class SetupWizard:
         status = self.get_setup_status()
         lines = ["Gru Setup Status", "=" * 40, ""]
 
-        for step_id, step in status["steps"].items():
+        for _step_id, step in status["steps"].items():
             icon = "[x]" if step["configured"] else "[ ]"
             required = "(required)" if step["required"] else "(optional)"
             lines.append(f"{icon} {step['name']} {required}")
@@ -469,13 +466,15 @@ def parse_config_from_message(message: str) -> list[ConfigValue]:
     detected = detect_multiple_keys(message)
 
     for key_type, value in detected:
-        results.append(ConfigValue(
-            key=key_type.value,
-            value=value,
-            key_type=key_type,
-            source="chat",
-            is_secret=True,
-        ))
+        results.append(
+            ConfigValue(
+                key=key_type.value,
+                value=value,
+                key_type=key_type,
+                source="chat",
+                is_secret=True,
+            )
+        )
 
     return results
 

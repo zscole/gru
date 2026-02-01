@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from gru.actions.autonomous import (
@@ -78,7 +79,7 @@ class DoorDashOrderHandler(ActionHandler):
         except ImportError:
             return ActionResult(
                 success=False,
-                message="Playwright not installed. Run: pip install playwright && playwright install chromium"
+                message="Playwright not installed. Run: pip install playwright && playwright install chromium",
             )
 
         restaurant = params["restaurant"]
@@ -88,6 +89,7 @@ class DoorDashOrderHandler(ActionHandler):
         try:
             async with async_playwright() as p:
                 import os
+
                 user_data_dir = os.path.expanduser("~/.gru/browser-profiles/doordash")
                 os.makedirs(user_data_dir, exist_ok=True)
                 browser = await p.chromium.launch_persistent_context(
@@ -132,7 +134,9 @@ class DoorDashOrderHandler(ActionHandler):
                                     await page.wait_for_timeout(5000)
 
                                     # Check for confirmation
-                                    if "confirmation" in page.url or await page.query_selector('[data-testid="order-confirmation"]'):
+                                    if "confirmation" in page.url or await page.query_selector(
+                                        '[data-testid="order-confirmation"]'
+                                    ):
                                         await browser.close()
                                         return ActionResult(
                                             success=True,
@@ -144,7 +148,9 @@ class DoorDashOrderHandler(ActionHandler):
 
                 else:
                     # Search for restaurant
-                    await page.goto(f"https://www.doordash.com/search/store/{restaurant}/", wait_until="domcontentloaded")
+                    await page.goto(
+                        f"https://www.doordash.com/search/store/{restaurant}/", wait_until="domcontentloaded"
+                    )
                     await page.wait_for_timeout(3000)
 
                     # Check for login
@@ -216,10 +222,7 @@ class DoorDashOrderHandler(ActionHandler):
             return ActionResult(success=False, message=f"Order failed: {e}")
 
     async def undo(self, params: dict[str, Any], undo_data: dict[str, Any]) -> ActionResult:
-        return ActionResult(
-            success=False,
-            message="Please cancel your order via the DoorDash app."
-        )
+        return ActionResult(success=False, message="Please cancel your order via the DoorDash app.")
 
 
 class AmazonOrderHandler(ActionHandler):
@@ -272,12 +275,12 @@ class AmazonOrderHandler(ActionHandler):
         except ImportError:
             return ActionResult(
                 success=False,
-                message="Playwright not installed. Run: pip install playwright && playwright install chromium"
+                message="Playwright not installed. Run: pip install playwright && playwright install chromium",
             )
 
         item = params.get("item")
         asin = params.get("asin")
-        quantity = params.get("quantity", 1)
+        params.get("quantity", 1)
         buy_now = params.get("buy_now", False)
 
         try:
@@ -300,14 +303,14 @@ class AmazonOrderHandler(ActionHandler):
                     await page.wait_for_timeout(2000)
 
                     # Check for login
-                    sign_in = await page.query_selector('#nav-link-accountList')
+                    sign_in = await page.query_selector("#nav-link-accountList")
                     if sign_in:
                         sign_in_text = await sign_in.text_content()
                         if "Sign in" in sign_in_text:
                             logger.info("Amazon login may be required")
 
                     # Search
-                    search_box = await page.query_selector('#twotabsearchtextbox')
+                    search_box = await page.query_selector("#twotabsearchtextbox")
                     if search_box:
                         await search_box.fill(item)
                         await page.keyboard.press("Enter")
@@ -322,7 +325,7 @@ class AmazonOrderHandler(ActionHandler):
                 # On product page
                 if buy_now:
                     # Click Buy Now
-                    buy_now_btn = await page.query_selector('#buy-now-button')
+                    buy_now_btn = await page.query_selector("#buy-now-button")
                     if buy_now_btn:
                         await buy_now_btn.click()
                         await page.wait_for_timeout(3000)
@@ -337,7 +340,7 @@ class AmazonOrderHandler(ActionHandler):
                                 return ActionResult(success=False, message="Login timeout")
 
                         # Place order
-                        place_order_btn = await page.query_selector('#submitOrderButtonId')
+                        place_order_btn = await page.query_selector("#submitOrderButtonId")
                         if not place_order_btn:
                             place_order_btn = await page.query_selector('[name="placeYourOrder1"]')
 
@@ -346,7 +349,7 @@ class AmazonOrderHandler(ActionHandler):
                             await page.wait_for_timeout(5000)
 
                             # Check for confirmation
-                            if "thankyou" in page.url or await page.query_selector('#thank-you-page'):
+                            if "thankyou" in page.url or await page.query_selector("#thank-you-page"):
                                 await browser.close()
                                 return ActionResult(
                                     success=True,
@@ -357,7 +360,7 @@ class AmazonOrderHandler(ActionHandler):
                                 )
                 else:
                     # Add to cart
-                    add_to_cart_btn = await page.query_selector('#add-to-cart-button')
+                    add_to_cart_btn = await page.query_selector("#add-to-cart-button")
                     if add_to_cart_btn:
                         await add_to_cart_btn.click()
                         await page.wait_for_timeout(2000)
@@ -380,7 +383,4 @@ class AmazonOrderHandler(ActionHandler):
             return ActionResult(success=False, message=f"Order failed: {e}")
 
     async def undo(self, params: dict[str, Any], undo_data: dict[str, Any]) -> ActionResult:
-        return ActionResult(
-            success=False,
-            message="Please cancel your order via Amazon.com > Your Orders."
-        )
+        return ActionResult(success=False, message="Please cancel your order via Amazon.com > Your Orders.")

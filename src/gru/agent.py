@@ -19,8 +19,8 @@ from gru.tools.memory import set_memory_store
 if TYPE_CHECKING:
     from gru.claude import ClaudeClient
     from gru.memory import MemoryStore
-    from gru.proactive import ProactiveEngine
     from gru.orchestrator import Orchestrator
+    from gru.proactive import ProactiveEngine
 
 logger = logging.getLogger(__name__)
 
@@ -118,11 +118,13 @@ class Agent:
         # Set up proactive engine for reminder/trigger tools
         if self.proactive:
             from gru.tools.proactive import set_proactive_engine
+
             set_proactive_engine(self.proactive)
 
         # Set up orchestrator for agent management tools
         if self.orchestrator:
             from gru.tools.orchestrator import set_orchestrator
+
             set_orchestrator(self.orchestrator)
 
         self._initialized = True
@@ -160,10 +162,7 @@ class Agent:
                 # Check for anticipations based on current time
                 now = datetime.now()
                 context = await self.proactive._build_context()
-                anticipations = [
-                    p for p in self.proactive._patterns.values()
-                    if p.matches_now(now, context)
-                ]
+                anticipations = [p for p in self.proactive._patterns.values() if p.matches_now(now, context)]
                 if anticipations:
                     ant_str = ", ".join(p.description for p in anticipations[:3])
                     parts.append(f"ANTICIPATED NEEDS: {ant_str}")
@@ -220,12 +219,14 @@ class Agent:
                     content_blocks.append({"type": "text", "text": response.content})
 
                 for tu in response.tool_uses:
-                    content_blocks.append({
-                        "type": "tool_use",
-                        "id": tu.id,
-                        "name": tu.name,
-                        "input": tu.input,
-                    })
+                    content_blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": tu.id,
+                            "name": tu.name,
+                            "input": tu.input,
+                        }
+                    )
 
                 conversation.add_assistant_message(content_blocks)
 
@@ -234,11 +235,13 @@ class Agent:
                 for tu in response.tool_uses:
                     logger.info(f"Executing tool: {tu.name} with {tu.input}")
                     result = await execute_tool(tu.name, tu.input)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tu.id,
-                        "content": json.dumps(result),
-                    })
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tu.id,
+                            "content": json.dumps(result),
+                        }
+                    )
 
                 conversation.add_tool_results(tool_results)
                 continue  # Get Claude's response to tool results
@@ -260,19 +263,19 @@ class Agent:
         import re
 
         # Remove headers
-        text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^#{1,6}\s*", "", text, flags=re.MULTILINE)
         # Remove bold
-        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
-        text = re.sub(r'__([^_]+)__', r'\1', text)
+        text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+        text = re.sub(r"__([^_]+)__", r"\1", text)
         # Remove italic
-        text = re.sub(r'\*([^*]+)\*', r'\1', text)
-        text = re.sub(r'_([^_]+)_', r'\1', text)
+        text = re.sub(r"\*([^*]+)\*", r"\1", text)
+        text = re.sub(r"_([^_]+)_", r"\1", text)
         # Remove remaining asterisks
-        text = text.replace('*', '')
+        text = text.replace("*", "")
         # Remove bullet markers
-        text = re.sub(r'^\s*[-•]\s+', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^\s*[-•]\s+", "", text, flags=re.MULTILINE)
         # Clean up extra blank lines
-        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
 
         return text.strip()
 
@@ -300,6 +303,7 @@ class Agent:
             action = "search"
             # Extract search topic if possible
             import re
+
             match = re.search(r"(?:search|find|look up|google)\s+(?:for\s+)?(.+)", message_lower)
             if match:
                 context["query"] = match.group(1)[:50]

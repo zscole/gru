@@ -143,6 +143,7 @@ async def cancel_reminder(reminder_id: str) -> dict:
 
 # Behavior tracking tools
 
+
 async def track_action(action: str, context: dict[str, Any] | None = None) -> dict:
     """Track a user action for pattern learning.
 
@@ -197,11 +198,13 @@ async def check_anticipations() -> dict:
         anticipations = []
         for pattern in _engine._patterns.values():
             if pattern.matches_now(now, context):
-                anticipations.append({
-                    "action": pattern.action,
-                    "description": pattern.description,
-                    "confidence": pattern.confidence,
-                })
+                anticipations.append(
+                    {
+                        "action": pattern.action,
+                        "description": pattern.description,
+                        "confidence": pattern.confidence,
+                    }
+                )
 
         return {
             "anticipations": anticipations,

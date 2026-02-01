@@ -1071,7 +1071,7 @@ Just describe what you want - I'll figure out the rest!"""
             response += "- Use /gru create <template> for quick starts"
 
         await update.message.reply_text(response)  # type: ignore
-    
+
     async def _cmd_voice(self, update: Update, args: list[str]) -> None:
         """Voice message commands."""
         if not args:
@@ -1081,56 +1081,56 @@ Just describe what you want - I'll figure out the rest!"""
   /gru voice settings - Show voice configuration
   /gru voice set <setting> <value> - Update setting
   /gru voice test "Hello world" - Test TTS
-  
+
 Settings:
   - tts_provider: eleven_labs, openai, edge
   - stt_provider: openai, whisper
   - speed: 0.5 to 2.0
   - voice_id: provider-specific voice ID
-  
+
 Examples:
   /gru voice send 123456789 "Task completed successfully!"
   /gru voice set speed 1.2
   /gru voice set tts_provider edge"""
             await update.message.reply_text(help_text)  # type: ignore
             return
-            
+
         subcmd = args[0].lower()
-        
+
         if subcmd == "send" and len(args) >= 3:
             chat_id = args[1]
             text = " ".join(args[2:])
-            
+
             # Remove quotes if present
-            text = text.strip('"\'')
-            
+            text = text.strip("\"'")
+
             from gru.tools.voice import send_voice_message
-            
+
             result = await send_voice_message(chat_id, text)
-            
+
             if "error" in result:
                 await update.message.reply_text(f"Error: {result['error']}")  # type: ignore
             else:
                 await update.message.reply_text(f"Voice message sent to {chat_id}")  # type: ignore
-                
+
         elif subcmd == "test" and len(args) >= 2:
-            text = " ".join(args[1:]).strip('"\'')
+            text = " ".join(args[1:]).strip("\"'")
             chat_id = str(update.effective_chat.id)  # type: ignore
-            
+
             from gru.tools.voice import send_voice_message
-            
+
             result = await send_voice_message(chat_id, text)
-            
+
             if "error" in result:
                 await update.message.reply_text(f"Test failed: {result['error']}")  # type: ignore
             else:
-                await update.message.reply_text(f"Test voice message sent!")  # type: ignore
-                
+                await update.message.reply_text("Test voice message sent!")  # type: ignore
+
         elif subcmd == "settings":
             from gru.tools.voice import get_voice_settings
-            
+
             settings = await get_voice_settings()
-            
+
             if "error" in settings:
                 await update.message.reply_text(f"Error: {settings['error']}")  # type: ignore
             else:
@@ -1138,40 +1138,40 @@ Examples:
                 stt = settings["stt"]
                 audio = settings["audio"]
                 keys = settings["api_keys_configured"]
-                
+
                 response = f"""Voice Settings:
 
 TTS (Text-to-Speech):
-  Provider: {tts['provider']}
-  Voice ID: {tts['voice_id']}
-  Speed: {tts['speed']}
-  Quality: {tts['quality']}
+  Provider: {tts["provider"]}
+  Voice ID: {tts["voice_id"]}
+  Speed: {tts["speed"]}
+  Quality: {tts["quality"]}
 
 STT (Speech-to-Text):
-  Provider: {stt['provider']}
-  Language: {stt['language']}
+  Provider: {stt["provider"]}
+  Language: {stt["language"]}
 
 Audio:
-  Format: {audio['format']}
-  Quality: {audio['quality']}
-  Max Duration: {audio['max_duration']}s
+  Format: {audio["format"]}
+  Quality: {audio["quality"]}
+  Max Duration: {audio["max_duration"]}s
 
 API Keys Configured:
-  ElevenLabs: {'✅' if keys['eleven_labs'] else '❌'}
-  OpenAI: {'✅' if keys['openai'] else '❌'}
+  ElevenLabs: {"✅" if keys["eleven_labs"] else "❌"}
+  OpenAI: {"✅" if keys["openai"] else "❌"}
 
 Available Providers:
-  TTS: {', '.join(tts['available_providers'])}
-  STT: {', '.join(stt['available_providers'])}"""
-                
+  TTS: {", ".join(tts["available_providers"])}
+  STT: {", ".join(stt["available_providers"])}"""
+
                 await update.message.reply_text(response)  # type: ignore
-                
+
         elif subcmd == "set" and len(args) >= 3:
             setting = args[1]
             value = args[2]
-            
+
             from gru.tools.voice import update_voice_settings
-            
+
             # Map setting names to parameters
             kwargs = {}
             if setting == "tts_provider":
@@ -1193,14 +1193,14 @@ Available Providers:
             else:
                 await update.message.reply_text(f"Unknown setting: {setting}")  # type: ignore
                 return
-                
+
             result = await update_voice_settings(**kwargs)
-            
+
             if "error" in result:
                 await update.message.reply_text(f"Error: {result['error']}")  # type: ignore
             else:
                 await update.message.reply_text(f"Updated {setting} = {value}")  # type: ignore
-                
+
         else:
             await update.message.reply_text("Invalid voice command. Use /gru voice for help.")  # type: ignore
 
@@ -1932,7 +1932,7 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
             # Download the voice file
             file = await context.bot.get_file(message.voice.file_id)
             file_bytes = await file.download_as_bytearray()
-            
+
             # Get voice format
             voice_format = "ogg"  # Telegram voice messages are usually OGG
             if hasattr(message.voice, "mime_type"):
@@ -1943,30 +1943,27 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
                     voice_format = "wav"
                 elif "m4a" in mime_type:
                     voice_format = "m4a"
-            
+
             # Use the voice tools for better transcription
             from gru.tools.voice import transcribe_voice_message
-            
+
             audio_b64 = base64.b64encode(file_bytes).decode("utf-8")
-            transcription_result = await transcribe_voice_message(
-                audio_data=audio_b64,
-                format=voice_format
-            )
-            
+            transcription_result = await transcribe_voice_message(audio_data=audio_b64, format=voice_format)
+
             if "error" in transcription_result:
                 await message.reply_text(f"Transcription failed: {transcription_result['error']}")
                 return
-                
+
             transcription = transcription_result["transcription"]
             if not transcription or not transcription.strip():
                 await message.reply_text("Could not transcribe audio. Please try again or type your message.")
                 return
-            
+
             # Show transcription with metadata
             provider = transcription_result.get("provider", "unknown")
             size = transcription_result.get("audio_size", 0)
             duration = getattr(message.voice, "duration", 0)
-            
+
             await message.reply_text(
                 f"🎤 Transcribed ({provider}, {duration}s, {size} bytes):\n\n"
                 f'"{transcription}"\n\n'
@@ -1975,7 +1972,7 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
 
             # Extract task from transcription - look for action words
             task = transcription.strip()
-            
+
             # If transcription is very short, ask for clarification
             if len(task.split()) < 3:
                 await message.reply_text(
@@ -1990,10 +1987,9 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
                 priority="normal",
             )
 
-            agent_display = self._get_agent_display(agent['id'])
+            agent_display = self._get_agent_display(agent["id"])
             await message.reply_text(
-                f"✅ Agent spawned: {agent_display}\n"
-                f"Task: {task[:200]}{'...' if len(task) > 200 else ''}"
+                f"✅ Agent spawned: {agent_display}\nTask: {task[:200]}{'...' if len(task) > 200 else ''}"
             )
 
         except Exception as e:
@@ -2026,10 +2022,12 @@ IMPORTANT: The full base64 image data has been provided to you in the task conte
 
         # Initialize voice tools
         from gru.tools.voice import set_voice_dependencies
+
         set_voice_dependencies(self.config, self.orchestrator)
 
         # Initialize research tools
         from gru.tools.research import set_research_dependencies
+
         set_research_dependencies(self.config, self.orchestrator)
 
         # Set up orchestrator callbacks

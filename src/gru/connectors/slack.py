@@ -70,11 +70,15 @@ class SlackConnector:
                 self._token = user_token
 
                 # Save token
-                self.token_path.write_text(json.dumps({
-                    "token": user_token,
-                    "user_id": self._user_id,
-                    "team": data.get("team"),
-                }))
+                self.token_path.write_text(
+                    json.dumps(
+                        {
+                            "token": user_token,
+                            "user_id": self._user_id,
+                            "team": data.get("team"),
+                        }
+                    )
+                )
 
                 logger.info(f"Slack user token saved for {data.get('user')}")
                 return True
@@ -150,7 +154,7 @@ class SlackConnector:
                 # Get messages from each DM
                 for dm in dm_channels[:10]:  # Limit channels to check
                     channel_id = dm["id"]
-                    other_user = dm.get("user")
+                    dm.get("user")
 
                     resp = await client.get(
                         "https://slack.com/api/conversations.history",
@@ -173,13 +177,15 @@ class SlackConnector:
                                 continue
 
                             self._seen_message_ids.add(msg_id)
-                            messages.append({
-                                "type": "dm",
-                                "from_user": msg.get("user"),
-                                "text": msg.get("text", "")[:200],
-                                "ts": msg.get("ts"),
-                                "channel_id": channel_id,
-                            })
+                            messages.append(
+                                {
+                                    "type": "dm",
+                                    "from_user": msg.get("user"),
+                                    "text": msg.get("text", "")[:200],
+                                    "ts": msg.get("ts"),
+                                    "channel_id": channel_id,
+                                }
+                            )
 
         except Exception as e:
             logger.error(f"Failed to get Slack DMs: {e}")
@@ -218,22 +224,22 @@ class SlackConnector:
                         continue
 
                     self._seen_message_ids.add(msg_id)
-                    messages.append({
-                        "type": "mention",
-                        "from_user": match.get("user"),
-                        "text": match.get("text", "")[:200],
-                        "ts": match.get("ts"),
-                        "channel": match.get("channel", {}).get("name"),
-                    })
+                    messages.append(
+                        {
+                            "type": "mention",
+                            "from_user": match.get("user"),
+                            "text": match.get("text", "")[:200],
+                            "ts": match.get("ts"),
+                            "channel": match.get("channel", {}).get("name"),
+                        }
+                    )
 
         except Exception as e:
             logger.error(f"Failed to get Slack mentions: {e}")
 
         return messages[:limit]
 
-    async def _get_mentions_from_channels(
-        self, hours_back: int, limit: int
-    ) -> list[dict[str, Any]]:
+    async def _get_mentions_from_channels(self, hours_back: int, limit: int) -> list[dict[str, Any]]:
         """Fallback: scan watched channels for mentions."""
         if not self._token or not self._user_id:
             return []
@@ -268,13 +274,15 @@ class SlackConnector:
                             continue
 
                         self._seen_message_ids.add(msg_id)
-                        messages.append({
-                            "type": "mention",
-                            "from_user": msg.get("user"),
-                            "text": text[:200],
-                            "ts": msg.get("ts"),
-                            "channel_id": channel_id,
-                        })
+                        messages.append(
+                            {
+                                "type": "mention",
+                                "from_user": msg.get("user"),
+                                "text": text[:200],
+                                "ts": msg.get("ts"),
+                                "channel_id": channel_id,
+                            }
+                        )
 
         except Exception as e:
             logger.error(f"Failed to scan Slack channels: {e}")
@@ -303,10 +311,7 @@ class SlackConnector:
                     data = resp.json()
 
                     if data.get("ok"):
-                        channel_ids = [
-                            ch["id"] for ch in data.get("channels", [])
-                            if ch.get("name") in channel_names
-                        ]
+                        channel_ids = [ch["id"] for ch in data.get("channels", []) if ch.get("name") in channel_names]
                     else:
                         channel_ids = []
                 else:
@@ -337,13 +342,15 @@ class SlackConnector:
                             continue
 
                         self._seen_message_ids.add(msg_id)
-                        messages.append({
-                            "type": "channel",
-                            "from_user": msg.get("user"),
-                            "text": msg.get("text", "")[:200],
-                            "ts": msg.get("ts"),
-                            "channel_id": channel_id,
-                        })
+                        messages.append(
+                            {
+                                "type": "channel",
+                                "from_user": msg.get("user"),
+                                "text": msg.get("text", "")[:200],
+                                "ts": msg.get("ts"),
+                                "channel_id": channel_id,
+                            }
+                        )
 
         except Exception as e:
             logger.error(f"Failed to get Slack channel activity: {e}")

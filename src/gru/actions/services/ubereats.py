@@ -6,10 +6,9 @@ import asyncio
 import logging
 import re
 import urllib.parse
-from typing import Any
 
 from gru.actions.auth import get_auth_manager
-from gru.actions.base import Action, ActionContext, ActionResult, ActionStatus
+from gru.actions.base import Action, ActionContext, ActionResult
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +33,7 @@ class UberEatsSearchAction(Action):
         query = params["query"]
         location = params.get("location") or context.location
         num_results = params.get("num_results", 10)
-        sort_by = params.get("sort_by", "relevance")  # relevance, rating, delivery_time
+        params.get("sort_by", "relevance")  # relevance, rating, delivery_time
 
         # Build URL with location
         location_str = ""
@@ -55,8 +54,7 @@ class UberEatsSearchAction(Action):
                 try:
                     # Click on location/address input
                     location_input = await page.wait_for_selector(
-                        "[data-testid='location-typeahead-input'], input[placeholder*='address']",
-                        timeout=5000
+                        "[data-testid='location-typeahead-input'], input[placeholder*='address']", timeout=5000
                     )
                     if location_input:
                         await location_input.fill(location_str)
@@ -125,13 +123,15 @@ class UberEatsSearchAction(Action):
                     if fee_el:
                         fee = await fee_el.inner_text()
 
-                    results.append({
-                        "name": name.strip(),
-                        "url": f"{UBEREATS_BASE}{href}" if href and not href.startswith("http") else href,
-                        "rating": rating,
-                        "delivery_time": delivery_time,
-                        "delivery_fee": fee,
-                    })
+                    results.append(
+                        {
+                            "name": name.strip(),
+                            "url": f"{UBEREATS_BASE}{href}" if href and not href.startswith("http") else href,
+                            "rating": rating,
+                            "delivery_time": delivery_time,
+                            "delivery_fee": fee,
+                        }
+                    )
 
                 except Exception as e:
                     logger.debug(f"Error parsing restaurant card: {e}")
@@ -148,9 +148,7 @@ class UberEatsSearchAction(Action):
             result = await context.browser.run_with_page(search, CONTEXT_NAME)
 
             if result["count"] == 0:
-                return ActionResult.error_result(
-                    f"No restaurants found for '{query}'"
-                )
+                return ActionResult.error_result(f"No restaurants found for '{query}'")
 
             top = result["results"][0]
             message = f"Found {result['count']} restaurants. Top: {top['name']}"
@@ -185,10 +183,7 @@ class UberEatsCartAction(Action):
             await page.goto(UBEREATS_BASE, wait_until="domcontentloaded")
 
             # Find and click cart button
-            cart_btn = await page.wait_for_selector(
-                "[data-testid='cart-button'], [aria-label*='cart']",
-                timeout=5000
-            )
+            cart_btn = await page.wait_for_selector("[data-testid='cart-button'], [aria-label*='cart']", timeout=5000)
 
             if not cart_btn:
                 return {"items": [], "total": None, "error": "Cart not found"}
@@ -214,11 +209,13 @@ class UberEatsCartAction(Action):
                     price_el = await item_el.query_selector("[data-testid='cart-item-price']")
                     qty_el = await item_el.query_selector("[data-testid='cart-item-quantity']")
 
-                    items.append({
-                        "name": await name_el.inner_text() if name_el else "Unknown",
-                        "price": await price_el.inner_text() if price_el else None,
-                        "quantity": await qty_el.inner_text() if qty_el else "1",
-                    })
+                    items.append(
+                        {
+                            "name": await name_el.inner_text() if name_el else "Unknown",
+                            "price": await price_el.inner_text() if price_el else None,
+                            "quantity": await qty_el.inner_text() if qty_el else "1",
+                        }
+                    )
                 except Exception:
                     continue
 
@@ -322,8 +319,7 @@ class UberEatsOrderAction(Action):
 
                                 # Click add to cart
                                 add_btn = await page.wait_for_selector(
-                                    "[data-testid='add-to-cart'], button:has-text('Add to Cart')",
-                                    timeout=5000
+                                    "[data-testid='add-to-cart'], button:has-text('Add to Cart')", timeout=5000
                                 )
                                 if add_btn:
                                     await add_btn.click()
@@ -349,8 +345,7 @@ class UberEatsOrderAction(Action):
                             await asyncio.sleep(1)
 
                             add_btn = await page.wait_for_selector(
-                                "[data-testid='add-to-cart'], button:has-text('Add')",
-                                timeout=5000
+                                "[data-testid='add-to-cart'], button:has-text('Add')", timeout=5000
                             )
                             if add_btn:
                                 await add_btn.click()
@@ -365,9 +360,7 @@ class UberEatsOrderAction(Action):
 
             if place_order:
                 # Click checkout
-                checkout_btn = await page.query_selector(
-                    "[data-testid='checkout-button'], button:has-text('Checkout')"
-                )
+                checkout_btn = await page.query_selector("[data-testid='checkout-button'], button:has-text('Checkout')")
                 if checkout_btn:
                     await checkout_btn.click()
                     await asyncio.sleep(2)

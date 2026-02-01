@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -254,9 +254,7 @@ class TestExtractFactsFromConversation:
         mock_client.send_message = AsyncMock(return_value=mock_response)
 
         # Pass None for agent_id since we don't have an agent in the test DB
-        extracted = await memory_store.extract_facts_from_conversation(
-            conversation, None, mock_client
-        )
+        extracted = await memory_store.extract_facts_from_conversation(conversation, None, mock_client)
         assert len(extracted) == 1
 
     async def test_extract_facts_empty_conversation(self, memory_store):
@@ -277,9 +275,7 @@ class TestExtractFactsFromConversation:
         mock_client = AsyncMock()
         mock_client.send_message = AsyncMock(return_value=mock_response)
 
-        extracted = await memory_store.extract_facts_from_conversation(
-            conversation, "agent123", mock_client
-        )
+        extracted = await memory_store.extract_facts_from_conversation(conversation, "agent123", mock_client)
         assert len(extracted) == 0
 
     async def test_extract_facts_handles_markdown_code_block(self, memory_store):
@@ -295,7 +291,5 @@ class TestExtractFactsFromConversation:
         mock_client.send_message = AsyncMock(return_value=mock_response)
 
         # Pass None for agent_id since we don't have an agent in the test DB
-        extracted = await memory_store.extract_facts_from_conversation(
-            conversation, None, mock_client
-        )
+        extracted = await memory_store.extract_facts_from_conversation(conversation, None, mock_client)
         assert len(extracted) == 1

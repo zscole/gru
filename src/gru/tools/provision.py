@@ -6,7 +6,6 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Any
 
 from gru.tools.base import register_tool
 
@@ -16,6 +15,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ProviderConfig:
     """Configuration for an API provider."""
+
     name: str
     signup_url: str
     console_url: str
@@ -79,14 +79,16 @@ async def list_providers() -> dict:
         env_var = f"{key.upper()}_API_KEY"
         configured = bool(os.getenv(env_var))
 
-        result.append({
-            "id": key,
-            "name": provider.name,
-            "configured": configured,
-            "free_tier": provider.free_tier,
-            "requires_billing": provider.requires_billing,
-            "signup_url": provider.signup_url,
-        })
+        result.append(
+            {
+                "id": key,
+                "name": provider.name,
+                "configured": configured,
+                "free_tier": provider.free_tier,
+                "requires_billing": provider.requires_billing,
+                "signup_url": provider.signup_url,
+            }
+        )
 
     return {"providers": result}
 
@@ -203,7 +205,7 @@ async def _provision_openweathermap(page, email: str, config: ProviderConfig) ->
     # Try to fill signup form
     try:
         # Check if we're on signup page
-        username_field = await page.query_selector('input[name="user[username]"]')
+        await page.query_selector('input[name="user[username]"]')
         email_field = await page.query_selector('input[name="user[email]"]')
 
         if email_field:
@@ -332,11 +334,13 @@ async def save_api_key(provider: str, key: str) -> dict:
         "provider": config.name,
         "env_var": env_var,
         "env_file": env_path,
-        "note": f"Key saved. Restart Gru to use it, or it's already active in this session.",
+        "note": "Key saved. Restart Gru to use it, or it's already active in this session.",
     }
 
 
-async def setup_google_oauth(client_id: str | None = None, client_secret: str | None = None, auth_code: str | None = None) -> dict:
+async def setup_google_oauth(
+    client_id: str | None = None, client_secret: str | None = None, auth_code: str | None = None
+) -> dict:
     """Set up Google OAuth for Calendar, Gmail, Docs access.
 
     Three-step process:
@@ -344,8 +348,8 @@ async def setup_google_oauth(client_id: str | None = None, client_secret: str | 
     2. Call with client_id + client_secret -> save creds, get auth URL
     3. Call with auth_code -> exchange for tokens, complete setup
     """
-    from pathlib import Path
     import json
+    from pathlib import Path
 
     data_dir = Path(os.path.expanduser("~/.gru"))
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -353,7 +357,7 @@ async def setup_google_oauth(client_id: str | None = None, client_secret: str | 
     credentials_path = data_dir / "google_credentials.json"
     token_path = data_dir / "google_token.json"
 
-    SCOPES = [
+    scopes = [
         "https://www.googleapis.com/auth/calendar.readonly",
         "https://www.googleapis.com/auth/gmail.readonly",
         "https://www.googleapis.com/auth/gmail.send",
@@ -378,9 +382,7 @@ async def setup_google_oauth(client_id: str | None = None, client_secret: str | 
             from google_auth_oauthlib.flow import InstalledAppFlow
 
             flow = InstalledAppFlow.from_client_secrets_file(
-                str(credentials_path),
-                SCOPES,
-                redirect_uri="urn:ietf:wg:oauth:2.0:oob"
+                str(credentials_path), scopes, redirect_uri="urn:ietf:wg:oauth:2.0:oob"
             )
             flow.fetch_token(code=auth_code)
             creds = flow.credentials
@@ -425,9 +427,7 @@ async def setup_google_oauth(client_id: str | None = None, client_secret: str | 
         from google_auth_oauthlib.flow import InstalledAppFlow
 
         flow = InstalledAppFlow.from_client_secrets_file(
-            str(credentials_path),
-            SCOPES,
-            redirect_uri="urn:ietf:wg:oauth:2.0:oob"
+            str(credentials_path), scopes, redirect_uri="urn:ietf:wg:oauth:2.0:oob"
         )
         auth_url, _ = flow.authorization_url(prompt="consent")
 
@@ -457,6 +457,7 @@ async def check_google_status() -> dict:
     if token_path.exists():
         try:
             from google.oauth2.credentials import Credentials
+
             creds = Credentials.from_authorized_user_file(str(token_path))
             status["authenticated"] = creds.valid
             status["expired"] = creds.expired

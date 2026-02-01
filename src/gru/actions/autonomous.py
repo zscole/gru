@@ -15,10 +15,11 @@ import json
 import logging
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from gru.db import Database
@@ -28,39 +29,43 @@ logger = logging.getLogger(__name__)
 
 class ActionStatus(Enum):
     """Status of an autonomous action."""
-    PENDING = "pending"          # Waiting for user confirmation
-    CONFIRMED = "confirmed"      # User confirmed, ready to execute
-    EXECUTING = "executing"      # Currently running
-    COMPLETED = "completed"      # Successfully completed
-    FAILED = "failed"            # Execution failed
-    CANCELLED = "cancelled"      # User cancelled
-    EXPIRED = "expired"          # Confirmation timed out
+
+    PENDING = "pending"  # Waiting for user confirmation
+    CONFIRMED = "confirmed"  # User confirmed, ready to execute
+    EXECUTING = "executing"  # Currently running
+    COMPLETED = "completed"  # Successfully completed
+    FAILED = "failed"  # Execution failed
+    CANCELLED = "cancelled"  # User cancelled
+    EXPIRED = "expired"  # Confirmation timed out
 
 
 class ActionCategory(Enum):
     """Categories of autonomous actions."""
+
     COMMUNICATION = "communication"  # Email, Slack, SMS
-    CALENDAR = "calendar"            # Events, reminders
-    RESERVATION = "reservation"      # Restaurants, hotels, etc.
-    PAYMENT = "payment"              # Venmo, transfers
-    PURCHASE = "purchase"            # Orders, subscriptions
-    FILE = "file"                    # Send, organize documents
-    TASK = "task"                    # Create tasks, reminders
+    CALENDAR = "calendar"  # Events, reminders
+    RESERVATION = "reservation"  # Restaurants, hotels, etc.
+    PAYMENT = "payment"  # Venmo, transfers
+    PURCHASE = "purchase"  # Orders, subscriptions
+    FILE = "file"  # Send, organize documents
+    TASK = "task"  # Create tasks, reminders
 
 
 @dataclass
 class ActionPreview:
     """Preview of what an action will do before confirmation."""
-    summary: str                     # One-line summary
-    details: list[str]               # Bullet points of what will happen
-    reversible: bool                 # Can this be undone?
-    cost: float | None = None        # Cost if applicable
+
+    summary: str  # One-line summary
+    details: list[str]  # Bullet points of what will happen
+    reversible: bool  # Can this be undone?
+    cost: float | None = None  # Cost if applicable
     warnings: list[str] = field(default_factory=list)
 
 
 @dataclass
 class ActionResult:
     """Result of executing an action."""
+
     success: bool
     message: str
     data: dict[str, Any] = field(default_factory=dict)
@@ -71,6 +76,7 @@ class ActionResult:
 @dataclass
 class AutonomousAction:
     """A pending or completed autonomous action."""
+
     id: str
     action_type: str
     category: ActionCategory
@@ -189,9 +195,7 @@ class AutonomousActionEngine:
                 expires_at TEXT
             )
         """)
-        await self.db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_actions_status ON autonomous_actions(status)"
-        )
+        await self.db.execute("CREATE INDEX IF NOT EXISTS idx_actions_status ON autonomous_actions(status)")
         await self.db.commit()
 
         # Register built-in handlers
@@ -201,26 +205,26 @@ class AutonomousActionEngine:
 
     def _register_builtin_handlers(self) -> None:
         """Register built-in action handlers."""
+        from gru.actions.handlers.calendar import (
+            CreateEventHandler,
+            DeleteEventHandler,
+            UpdateEventHandler,
+        )
         from gru.actions.handlers.communication import (
             SendEmailHandler,
             SendSlackMessageHandler,
             SendSMSHandler,
         )
-        from gru.actions.handlers.calendar import (
-            CreateEventHandler,
-            UpdateEventHandler,
-            DeleteEventHandler,
-        )
-        from gru.actions.handlers.reservations import (
-            OpenTableReservationHandler,
-            ResyReservationHandler,
-        )
         from gru.actions.handlers.payments import (
             VenmoPaymentHandler,
         )
         from gru.actions.handlers.purchases import (
-            DoorDashOrderHandler,
             AmazonOrderHandler,
+            DoorDashOrderHandler,
+        )
+        from gru.actions.handlers.reservations import (
+            OpenTableReservationHandler,
+            ResyReservationHandler,
         )
 
         handlers = [
@@ -240,9 +244,7 @@ class AutonomousActionEngine:
         for handler in handlers:
             self.registry.register(handler)
 
-    def set_confirmation_callback(
-        self, callback: Callable[[AutonomousAction], asyncio.Future]
-    ) -> None:
+    def set_confirmation_callback(self, callback: Callable[[AutonomousAction], asyncio.Future]) -> None:
         """Set callback for requesting user confirmation."""
         self._confirmation_callback = callback
 
@@ -417,10 +419,7 @@ class AutonomousActionEngine:
             # Notify
             if self._notification_callback:
                 status_emoji = "Done" if result.success else "Failed"
-                self._notification_callback(
-                    "action",
-                    f"{status_emoji}: {result.message}"
-                )
+                self._notification_callback("action", f"{status_emoji}: {result.message}")
 
             return {
                 "status": action.status.value,
@@ -477,33 +476,34 @@ class AutonomousActionEngine:
 
     async def get_action_history(self, limit: int = 20) -> list[dict[str, Any]]:
         """Get recent action history."""
-        rows = await self.db.fetchall(
-            "SELECT * FROM autonomous_actions ORDER BY created_at DESC LIMIT ?",
-            (limit,)
-        )
+        rows = await self.db.fetchall("SELECT * FROM autonomous_actions ORDER BY created_at DESC LIMIT ?", (limit,))
         return [self._row_to_dict(row) for row in rows]
 
     async def _save_action(self, action: AutonomousAction) -> None:
         """Save action to database."""
         preview_json = None
         if action.preview:
-            preview_json = json.dumps({
-                "summary": action.preview.summary,
-                "details": action.preview.details,
-                "reversible": action.preview.reversible,
-                "cost": action.preview.cost,
-                "warnings": action.preview.warnings,
-            })
+            preview_json = json.dumps(
+                {
+                    "summary": action.preview.summary,
+                    "details": action.preview.details,
+                    "reversible": action.preview.reversible,
+                    "cost": action.preview.cost,
+                    "warnings": action.preview.warnings,
+                }
+            )
 
         result_json = None
         if action.result:
-            result_json = json.dumps({
-                "success": action.result.success,
-                "message": action.result.message,
-                "data": action.result.data,
-                "undo_available": action.result.undo_available,
-                "undo_data": action.result.undo_data,
-            })
+            result_json = json.dumps(
+                {
+                    "success": action.result.success,
+                    "message": action.result.message,
+                    "data": action.result.data,
+                    "undo_available": action.result.undo_available,
+                    "undo_data": action.result.undo_data,
+                }
+            )
 
         await self.db.execute(
             """
@@ -531,16 +531,13 @@ class AutonomousActionEngine:
                 result_json,
                 action.agent_id,
                 action.expires_at,
-            )
+            ),
         )
         await self.db.commit()
 
     async def _load_action(self, action_id: str) -> AutonomousAction | None:
         """Load action from database."""
-        row = await self.db.fetchone(
-            "SELECT * FROM autonomous_actions WHERE id = ?",
-            (action_id,)
-        )
+        row = await self.db.fetchone("SELECT * FROM autonomous_actions WHERE id = ?", (action_id,))
         if not row:
             return None
 

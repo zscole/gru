@@ -34,6 +34,7 @@ def _get_connector():
 
     # Fallback: try to load from disk (for CLI usage)
     from gru.connectors.google import GoogleConnector
+
     data_dir = Path.home() / ".gru"
     fallback = GoogleConnector(data_dir)
     if fallback.load_token():
@@ -54,20 +55,22 @@ async def get_calendar_events(days_ahead: int = 1) -> dict:
         return {"error": "Not authenticated with Google. Run 'gru google login' first."}
 
     try:
-        from datetime import timezone
-
         now = datetime.utcnow()
         time_min = now.isoformat() + "Z"
         time_max = (now + timedelta(days=days_ahead)).isoformat() + "Z"
 
-        events_result = connector._calendar_service.events().list(
-            calendarId="primary",
-            timeMin=time_min,
-            timeMax=time_max,
-            maxResults=20,
-            singleEvents=True,
-            orderBy="startTime",
-        ).execute()
+        events_result = (
+            connector._calendar_service.events()
+            .list(
+                calendarId="primary",
+                timeMin=time_min,
+                timeMax=time_max,
+                maxResults=20,
+                singleEvents=True,
+                orderBy="startTime",
+            )
+            .execute()
+        )
 
         events = events_result.get("items", [])
 
@@ -82,17 +85,19 @@ async def get_calendar_events(days_ahead: int = 1) -> dict:
                 try:
                     dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
                     time_str = dt.strftime("%I:%M %p")
-                except:
+                except ValueError:
                     time_str = start_time
             else:
                 time_str = "All day"
 
-            results.append({
-                "summary": event.get("summary", "Untitled"),
-                "time": time_str,
-                "location": event.get("location"),
-                "description": event.get("description", "")[:100] if event.get("description") else None,
-            })
+            results.append(
+                {
+                    "summary": event.get("summary", "Untitled"),
+                    "time": time_str,
+                    "location": event.get("location"),
+                    "description": event.get("description", "")[:100] if event.get("description") else None,
+                }
+            )
 
         return {
             "events": results,
@@ -118,11 +123,16 @@ async def get_emails(max_results: int = 10, unread_only: bool = True) -> dict:
     try:
         query = "is:unread" if unread_only else ""
 
-        results = connector._gmail_service.users().messages().list(
-            userId="me",
-            q=query,
-            maxResults=max_results,
-        ).execute()
+        results = (
+            connector._gmail_service.users()
+            .messages()
+            .list(
+                userId="me",
+                q=query,
+                maxResults=max_results,
+            )
+            .execute()
+        )
 
         messages = results.get("messages", [])
         emails = []
@@ -130,26 +140,30 @@ async def get_emails(max_results: int = 10, unread_only: bool = True) -> dict:
         for msg_meta in messages[:max_results]:
             msg_id = msg_meta.get("id", "")
 
-            msg = connector._gmail_service.users().messages().get(
-                userId="me",
-                id=msg_id,
-                format="metadata",
-                metadataHeaders=["From", "Subject", "Date"],
-            ).execute()
+            msg = (
+                connector._gmail_service.users()
+                .messages()
+                .get(
+                    userId="me",
+                    id=msg_id,
+                    format="metadata",
+                    metadataHeaders=["From", "Subject", "Date"],
+                )
+                .execute()
+            )
 
             headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
 
             from_header = headers.get("From", "Unknown")
-            if "<" in from_header:
-                sender = from_header.split("<")[0].strip().strip('"')
-            else:
-                sender = from_header.split("@")[0]
+            sender = from_header.split("<")[0].strip().strip('"') if "<" in from_header else from_header.split("@")[0]
 
-            emails.append({
-                "from": sender,
-                "subject": headers.get("Subject", "(no subject)"),
-                "date": headers.get("Date", ""),
-            })
+            emails.append(
+                {
+                    "from": sender,
+                    "subject": headers.get("Subject", "(no subject)"),
+                    "date": headers.get("Date", ""),
+                }
+            )
 
         return {
             "emails": emails,
@@ -173,7 +187,7 @@ async def send_email(to: str, subject: str, body: str) -> dict:
         return {"error": "Not authenticated with Google. Run 'gru google login' first."}
 
     try:
-        result = await connector.send_email(to, subject, body)
+        await connector.send_email(to, subject, body)
         return {
             "status": "sent",
             "to": to,

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -215,12 +214,14 @@ class AuthManager:
         services = []
         for service in self._login_urls:
             state = self.get_auth_state(service)
-            services.append({
-                "service": service,
-                "authenticated": state.authenticated,
-                "last_check": state.last_check.isoformat() if state.last_check else None,
-                "login_url": state.login_url,
-            })
+            services.append(
+                {
+                    "service": service,
+                    "authenticated": state.authenticated,
+                    "last_check": state.last_check.isoformat() if state.last_check else None,
+                    "login_url": state.login_url,
+                }
+            )
         return services
 
 

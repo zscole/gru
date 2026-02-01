@@ -5,7 +5,6 @@ Uses Playwright to automate Slack app creation and OAuth token retrieval.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -97,12 +96,12 @@ async def run_slack_setup_agent(app_name: str = "Gru Assistant") -> dict:
                     await page.wait_for_timeout(500)
 
                 # Select workspace from dropdown
-                workspace_select = await page.query_selector('select')
+                workspace_select = await page.query_selector("select")
                 if workspace_select:
                     # Get first option value
-                    options = await workspace_select.query_selector_all('option')
+                    options = await workspace_select.query_selector_all("option")
                     if len(options) > 1:
-                        value = await options[1].get_attribute('value')
+                        value = await options[1].get_attribute("value")
                         if value:
                             await workspace_select.select_option(value)
 
@@ -143,13 +142,13 @@ async def run_slack_setup_agent(app_name: str = "Gru Assistant") -> dict:
             ]
 
             # Find and click "Add an OAuth Scope" under User Token Scopes
-            user_scopes_section = await page.query_selector('text=User Token Scopes')
+            user_scopes_section = await page.query_selector("text=User Token Scopes")
             if user_scopes_section:
                 # Scroll to it
                 await user_scopes_section.scroll_into_view_if_needed()
                 await page.wait_for_timeout(500)
 
-            add_scope_btn = await page.query_selector('button:has-text("Add an OAuth Scope")')
+            await page.query_selector('button:has-text("Add an OAuth Scope")')
 
             # Try to add each scope
             for scope in user_scopes:
@@ -173,7 +172,7 @@ async def run_slack_setup_agent(app_name: str = "Gru Assistant") -> dict:
                         # Click the matching option
                         scope_option = await page.query_selector(f'div[data-qa*="{scope}"]')
                         if not scope_option:
-                            scope_option = await page.query_selector(f'text={scope}')
+                            scope_option = await page.query_selector(f"text={scope}")
                         if scope_option:
                             await scope_option.click()
                             await page.wait_for_timeout(300)
@@ -212,7 +211,8 @@ async def run_slack_setup_agent(app_name: str = "Gru Assistant") -> dict:
             page_content = await page.content()
 
             import re
-            token_match = re.search(r'(xoxp-[a-zA-Z0-9-]+)', page_content)
+
+            token_match = re.search(r"(xoxp-[a-zA-Z0-9-]+)", page_content)
 
             if token_match:
                 user_token = token_match.group(1)
@@ -229,7 +229,7 @@ async def run_slack_setup_agent(app_name: str = "Gru Assistant") -> dict:
                 results["message"] = "Slack setup complete! I can now read your DMs, mentions, and channels."
             else:
                 # Token might be hidden, try clicking to reveal
-                token_section = await page.query_selector('text=User OAuth Token')
+                token_section = await page.query_selector("text=User OAuth Token")
                 if token_section:
                     await token_section.scroll_into_view_if_needed()
 

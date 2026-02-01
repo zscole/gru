@@ -158,9 +158,7 @@ class Action(ABC):
         """Hook called before execute. Return ActionResult to skip execute."""
         return None
 
-    async def post_execute(
-        self, context: ActionContext, result: ActionResult, **params
-    ) -> ActionResult:
+    async def post_execute(self, context: ActionContext, result: ActionResult, **params) -> ActionResult:
         """Hook called after execute. Can modify the result."""
         return result
 

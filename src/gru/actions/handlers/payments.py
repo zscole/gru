@@ -68,7 +68,7 @@ class VenmoPaymentHandler(ActionHandler):
         except ImportError:
             return ActionResult(
                 success=False,
-                message="Playwright not installed. Run: pip install playwright && playwright install chromium"
+                message="Playwright not installed. Run: pip install playwright && playwright install chromium",
             )
 
         recipient = params["recipient"]
@@ -79,6 +79,7 @@ class VenmoPaymentHandler(ActionHandler):
             async with async_playwright() as p:
                 # Use persistent context to potentially reuse Venmo login
                 import os
+
                 user_data_dir = os.path.expanduser("~/.gru/browser-profiles/venmo")
                 os.makedirs(user_data_dir, exist_ok=True)
                 browser = await p.chromium.launch_persistent_context(
@@ -100,10 +101,7 @@ class VenmoPaymentHandler(ActionHandler):
                         await page.wait_for_url("**/venmo.com/**", timeout=120000)
                     except Exception:
                         await browser.close()
-                        return ActionResult(
-                            success=False,
-                            message="Venmo login timeout. Please try again."
-                        )
+                        return ActionResult(success=False, message="Venmo login timeout. Please try again.")
 
                 # Navigate to pay page
                 await page.goto("https://venmo.com/pay", wait_until="domcontentloaded")
@@ -119,7 +117,7 @@ class VenmoPaymentHandler(ActionHandler):
                     await page.wait_for_timeout(1500)
 
                     # Select from dropdown
-                    suggestion = await page.query_selector(f'[data-testid="recipient-suggestion"]')
+                    suggestion = await page.query_selector('[data-testid="recipient-suggestion"]')
                     if suggestion:
                         await suggestion.click()
                         await page.wait_for_timeout(1000)
@@ -136,7 +134,7 @@ class VenmoPaymentHandler(ActionHandler):
                         # Enter note
                         note_input = await page.query_selector('textarea[placeholder*="What"]')
                         if not note_input:
-                            note_input = await page.query_selector('textarea')
+                            note_input = await page.query_selector("textarea")
 
                         if note_input:
                             await note_input.fill(note)

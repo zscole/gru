@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
-from typing import Any
 
 from gru.actions.base import Action, ActionContext, ActionResult
 
@@ -239,7 +237,7 @@ class ScreenshotAction(Action):
         try:
             result = await context.browser.run_with_page(screenshot, context_name)
             return ActionResult.success_result(
-                f"Screenshot saved",
+                "Screenshot saved",
                 result,
             )
         except Exception as e:

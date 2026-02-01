@@ -10,6 +10,8 @@ from pathlib import Path
 
 import click
 
+from gru.actions.executor import ActionExecutor
+from gru.actions.registry import get_registry
 from gru.config import Config
 from gru.connectors.google import GoogleConnector, setup_google_triggers
 from gru.crypto import CryptoManager, SecretStore
@@ -18,17 +20,12 @@ from gru.memory import MemoryStore
 from gru.orchestrator import Orchestrator
 from gru.proactive import ProactiveEngine, TriggerType
 from gru.session import PERSONAS, get_available_personas
-from gru.actions.executor import ActionExecutor
-from gru.actions.registry import get_registry
 from gru.setup import (
-    ConfigManager,
-    SetupWizard,
+    KEY_TYPE_NAMES,
+    KeyType,
     detect_key_type,
-    detect_multiple_keys,
     get_config_manager,
     get_setup_wizard,
-    KeyType,
-    KEY_TYPE_NAMES,
 )
 
 
@@ -590,8 +587,13 @@ def memory_search(ctx: click.Context, query: str, limit: int) -> None:
 
 
 @memory.command("add")
-@click.option("--type", "-t", "fact_type", required=True,
-              type=click.Choice(["preference", "entity", "decision", "relationship", "context"]))
+@click.option(
+    "--type",
+    "-t",
+    "fact_type",
+    required=True,
+    type=click.Choice(["preference", "entity", "decision", "relationship", "context"]),
+)
 @click.option("--subject", "-s", required=True, help="Subject of the fact")
 @click.option("--predicate", "-p", required=True, help="Predicate/relationship")
 @click.option("--object", "-o", "obj", required=True, help="Object of the fact")
@@ -778,8 +780,7 @@ def proactive_triggers(ctx: click.Context) -> None:
 
 @proactive.command("add-trigger")
 @click.option("--name", "-n", required=True, help="Trigger name")
-@click.option("--type", "-t", "trigger_type", required=True,
-              type=click.Choice(["scheduled", "interval", "condition"]))
+@click.option("--type", "-t", "trigger_type", required=True, type=click.Choice(["scheduled", "interval", "condition"]))
 @click.option("--action", "-a", required=True, help="Action (e.g., 'notify:Hello' or 'check:daily_summary')")
 @click.option("--schedule", "-s", help="Schedule time (HH:MM) for scheduled triggers")
 @click.option("--interval", "-i", type=int, help="Interval in minutes for interval triggers")
@@ -850,8 +851,12 @@ def proactive_observations(ctx: click.Context) -> None:
 
 @proactive.command("observe")
 @click.argument("content")
-@click.option("--category", "-c", default="note",
-              type=click.Choice(["reminder", "deadline", "follow_up", "anomaly", "opportunity", "note"]))
+@click.option(
+    "--category",
+    "-c",
+    default="note",
+    type=click.Choice(["reminder", "deadline", "follow_up", "anomaly", "opportunity", "note"]),
+)
 @click.option("--importance", "-i", type=float, default=0.5, help="Importance (0.0-1.0)")
 @click.option("--expires", "-e", type=int, help="Expires in N hours")
 @click.pass_context
@@ -911,8 +916,7 @@ def get_google_connector(ctx: click.Context) -> GoogleConnector:
 
 @google.command("setup")
 @click.option("--client-id", prompt="Google OAuth Client ID", help="OAuth 2.0 Client ID")
-@click.option("--client-secret", prompt="Google OAuth Client Secret", hide_input=True,
-              help="OAuth 2.0 Client Secret")
+@click.option("--client-secret", prompt="Google OAuth Client Secret", hide_input=True, help="OAuth 2.0 Client Secret")
 @click.pass_context
 def google_setup(ctx: click.Context, client_id: str, client_secret: str) -> None:
     """Set up Google OAuth credentials.
@@ -1140,7 +1144,7 @@ def session_persona(ctx: click.Context, persona_name: str | None, user: str) -> 
         persona = PERSONAS[persona_name]
         click.echo(f"Persona set to '{persona_name}': {persona.description}")
     else:
-        click.echo(f"Could not set persona", err=True)
+        click.echo("Could not set persona", err=True)
         sys.exit(1)
 
 
@@ -1254,12 +1258,7 @@ def action_run(
     run_async(executor.start())
 
     try:
-        result = run_async(executor.execute(
-            action_name,
-            user_id=user,
-            location=loc,
-            **params
-        ))
+        result = run_async(executor.execute(action_name, user_id=user, location=loc, **params))
 
         click.echo(f"\nStatus: {result.status.value}")
         click.echo(f"Message: {result.message}")
@@ -1281,8 +1280,7 @@ def action_run(
 
 @action.command("search")
 @click.argument("query")
-@click.option("--type", "-t", "search_type", default="web",
-              type=click.Choice(["web", "local", "restaurant", "food"]))
+@click.option("--type", "-t", "search_type", default="web", type=click.Choice(["web", "local", "restaurant", "food"]))
 @click.option("--location", "-l", help="Location for local searches")
 @click.pass_context
 def action_search(
@@ -1313,12 +1311,14 @@ def action_search(
     run_async(executor.start())
 
     try:
-        result = run_async(executor.execute(
-            action_name,
-            user_id="default",
-            location=loc,
-            query=query,
-        ))
+        result = run_async(
+            executor.execute(
+                action_name,
+                user_id="default",
+                location=loc,
+                query=query,
+            )
+        )
 
         click.echo(result.message)
 
@@ -1407,6 +1407,7 @@ def action_browser(
 
     # Default: show available services
     from gru.actions.auth import get_auth_manager
+
     auth_manager = get_auth_manager(ctx.obj["config"].data_dir)
     services = auth_manager.list_services()
 
@@ -1447,7 +1448,7 @@ def setup_wizard(ctx: click.Context, show_status: bool) -> None:
     click.echo("")
 
     # Show current status
-    for step_id, step in status["steps"].items():
+    for _step_id, step in status["steps"].items():
         icon = "[x]" if step["configured"] else "[ ]"
         required = "(required)" if step["required"] else "(optional)"
         click.echo(f"{icon} {step['name']} {required}")
@@ -1580,6 +1581,7 @@ def setup_wizard(ctx: click.Context, show_status: bool) -> None:
 
             # Set up credentials file for Google connector
             from gru.connectors.google import GoogleConnector
+
             connector = GoogleConnector(config.data_dir)
             run_async(connector.setup_credentials(client_id.strip(), client_secret.strip()))
 
@@ -1597,7 +1599,7 @@ def setup_wizard(ctx: click.Context, show_status: bool) -> None:
     click.echo("Setup complete!")
     click.echo("")
     click.echo("Start Gru with: gru run")
-    click.echo("Or chat via CLI: gru chat \"Hello!\"")
+    click.echo('Or chat via CLI: gru chat "Hello!"')
 
 
 @cli.group()
@@ -1651,9 +1653,8 @@ def config_get(ctx: click.Context, key: str) -> None:
 
     if value:
         # Mask secrets
-        if "key" in key.lower() or "token" in key.lower() or "secret" in key.lower():
-            if len(value) > 16:
-                value = value[:8] + "..." + value[-4:]
+        if ("key" in key.lower() or "token" in key.lower() or "secret" in key.lower()) and len(value) > 16:
+            value = value[:8] + "..." + value[-4:]
         click.echo(f"{key}: {value}")
     else:
         click.echo(f"{key}: (not set)")

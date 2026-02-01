@@ -16,15 +16,15 @@ from typing import TYPE_CHECKING, Any
 
 import anthropic
 
+from gru.actions.executor import ActionExecutor
+from gru.agent import Agent as ChatAgent
 from gru.claude import DEFAULT_TOOLS, ClaudeClient, Response, ToolResult
 from gru.coordinator import Coordinator
 from gru.mcp import MCPClient
 from gru.memory import MemoryStore
 from gru.proactive import ProactiveEngine, setup_default_triggers
 from gru.scheduler import Scheduler
-from gru.agent import Agent as ChatAgent
 from gru.session import SessionManager
-from gru.actions.executor import ActionExecutor
 from gru.worktree import (
     WorktreeInfo,
     cleanup_worktree,
@@ -281,8 +281,8 @@ class Orchestrator:
     async def _initialize_google_connector(self) -> None:
         """Initialize Google connector if credentials exist."""
         try:
-            from gru.connectors.google import GoogleConnector
             from gru.actions.services.google import set_google_connector as set_actions_google
+            from gru.connectors.google import GoogleConnector
             from gru.tools.google import set_google_connector as set_tools_google
 
             connector = GoogleConnector(self.config.data_dir)
@@ -320,6 +320,7 @@ class Orchestrator:
         # Set up research Claude client
         try:
             from gru.actions.services.research import set_research_claude
+
             set_research_claude(self.claude)
             logger.debug("Research Claude client configured")
         except Exception as e:
@@ -654,9 +655,9 @@ class Orchestrator:
         if not self._actions_initialized:
             try:
                 from gru.actions.autonomous import AutonomousActionEngine
-                from gru.tools.actions import set_action_engine
                 from gru.actions.handlers import set_google_connector as set_handlers_google
                 from gru.actions.handlers import set_slack_connector as set_handlers_slack
+                from gru.tools.actions import set_action_engine
 
                 self.autonomous_actions = AutonomousActionEngine(self.db)
                 await self.autonomous_actions.initialize()
@@ -869,9 +870,7 @@ class Orchestrator:
             ):
                 try:
                     # Extract facts
-                    extracted = await self.memory.extract_facts_from_conversation(
-                        agent.messages, agent.id, self.claude
-                    )
+                    extracted = await self.memory.extract_facts_from_conversation(agent.messages, agent.id, self.claude)
                     if extracted:
                         logger.info(f"Agent {agent.id}: extracted {len(extracted)} facts")
 
@@ -891,9 +890,7 @@ class Orchestrator:
 
                     # Detect observations (follow-ups, deadlines, etc.)
                     if self.proactive and self._proactive_initialized:
-                        observations = await self.memory.detect_observations(
-                            agent.messages, self.claude
-                        )
+                        observations = await self.memory.detect_observations(agent.messages, self.claude)
                         for obs in observations:
                             await self.proactive.add_observation(
                                 content=obs.get("content", ""),
@@ -1194,17 +1191,15 @@ class Orchestrator:
         await self.notify(agent.id, report)
 
         # If this is a PoC agent, save to history to prevent repeats
-        is_poc_agent = (
-            (agent.name and "poc" in agent.name.lower()) or
-            "poc" in agent.task.lower()[:200]
-        )
+        is_poc_agent = (agent.name and "poc" in agent.name.lower()) or "poc" in agent.task.lower()[:200]
         if is_poc_agent:
             try:
                 from gru.tools.research import save_poc_from_report
+
                 if save_poc_from_report(report):
                     logger.info(f"Saved PoC from agent {agent.id} to history")
                 else:
-                    logger.warning(f"Could not extract GitHub URL from PoC report")
+                    logger.warning("Could not extract GitHub URL from PoC report")
             except Exception as e:
                 logger.warning(f"Failed to save PoC to history: {e}")
 
@@ -1238,11 +1233,13 @@ class Orchestrator:
             logger.info(f"Agent {parent_agent.id} spawned sub-agent {sub_agent_id}")
 
             if not wait_for_result:
-                return json.dumps({
-                    "status": "spawned",
-                    "sub_agent_id": sub_agent_id,
-                    "message": "Sub-agent spawned. Use get_shared_context to check for results later.",
-                })
+                return json.dumps(
+                    {
+                        "status": "spawned",
+                        "sub_agent_id": sub_agent_id,
+                        "message": "Sub-agent spawned. Use get_shared_context to check for results later.",
+                    }
+                )
 
             # Wait for sub-agent to complete (with timeout)
             max_wait = 300  # 5 minutes max wait
@@ -1252,28 +1249,34 @@ class Orchestrator:
                 status = await self.get_agent(sub_agent_id)
                 if status and status.get("status") in ("completed", "failed"):
                     if status.get("status") == "failed":
-                        return json.dumps({
-                            "status": "failed",
-                            "sub_agent_id": sub_agent_id,
-                            "error": status.get("error", "Sub-agent failed"),
-                        })
+                        return json.dumps(
+                            {
+                                "status": "failed",
+                                "sub_agent_id": sub_agent_id,
+                                "error": status.get("error", "Sub-agent failed"),
+                            }
+                        )
 
                     # Get the result from task record
                     task_record = await self.db.get_task(sub_agent_id)
                     task_result = task_record.get("result") if task_record else None
-                    return json.dumps({
-                        "status": "completed",
-                        "sub_agent_id": sub_agent_id,
-                        "result": task_result or "Sub-agent completed but no result captured",
-                    })
+                    return json.dumps(
+                        {
+                            "status": "completed",
+                            "sub_agent_id": sub_agent_id,
+                            "result": task_result or "Sub-agent completed but no result captured",
+                        }
+                    )
 
                 await asyncio.sleep(2)
 
-            return json.dumps({
-                "status": "timeout",
-                "sub_agent_id": sub_agent_id,
-                "message": "Sub-agent still running after 5 minutes. Check status later.",
-            })
+            return json.dumps(
+                {
+                    "status": "timeout",
+                    "sub_agent_id": sub_agent_id,
+                    "message": "Sub-agent still running after 5 minutes. Check status later.",
+                }
+            )
 
         except Exception as e:
             logger.error(f"Failed to spawn sub-agent: {e}")
@@ -1422,6 +1425,7 @@ Keep subtasks concrete and actionable. Don't over-decompose simple things."""
         if not self._self_heal_initialized:
             try:
                 from gru.self_heal import init_self_heal
+
                 self.self_heal = init_self_heal(self)
                 self._self_heal_initialized = True
                 logger.info("Self-heal engine initialized")

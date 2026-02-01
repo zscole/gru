@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from gru.actions.base import ActionContext, ActionStatus
 from gru.actions.services.google import (
-    CreateDocumentAction,
-    WriteDocumentAction,
-    SendEmailAction,
     CompileDocumentAction,
+    CreateDocumentAction,
+    SendEmailAction,
+    WriteDocumentAction,
     set_google_connector,
-    get_google_connector,
 )
 
 
@@ -22,15 +21,19 @@ def mock_connector():
     """Create a mock Google connector."""
     connector = MagicMock()
     connector.is_authenticated.return_value = True
-    connector.create_document = AsyncMock(return_value={
-        "document_id": "doc123",
-        "url": "https://docs.google.com/document/d/doc123/edit",
-        "title": "Test Document",
-    })
+    connector.create_document = AsyncMock(
+        return_value={
+            "document_id": "doc123",
+            "url": "https://docs.google.com/document/d/doc123/edit",
+            "title": "Test Document",
+        }
+    )
     connector.write_to_document = AsyncMock()
-    connector.send_email = AsyncMock(return_value={
-        "message_id": "msg123",
-    })
+    connector.send_email = AsyncMock(
+        return_value={
+            "message_id": "msg123",
+        }
+    )
     return connector
 
 
@@ -71,9 +74,7 @@ class TestCreateDocumentAction:
 
         assert result.status == ActionStatus.COMPLETED
         assert "doc123" in result.data["document_id"]
-        mock_connector.create_document.assert_called_once_with(
-            "Test Document", "Hello, world!"
-        )
+        mock_connector.create_document.assert_called_once_with("Test Document", "Hello, world!")
 
     async def test_create_document_missing_title(self, action_context):
         """Test validation fails without title."""
@@ -145,9 +146,7 @@ class TestSendEmailAction:
 
         assert result.status == ActionStatus.COMPLETED
         assert result.data["to"] == "test@example.com"
-        mock_connector.send_email.assert_called_once_with(
-            "test@example.com", "Test Subject", "Test body", False
-        )
+        mock_connector.send_email.assert_called_once_with("test@example.com", "Test Subject", "Test body", False)
 
     async def test_send_email_requires_confirmation(self):
         """Test that send email requires confirmation."""
@@ -158,21 +157,15 @@ class TestSendEmailAction:
         """Test validation fails without required params."""
         action = SendEmailAction()
 
-        valid, error = await action.validate_params(
-            subject="Test", body="Body"
-        )
+        valid, error = await action.validate_params(subject="Test", body="Body")
         assert valid is False
         assert "to" in error.lower()
 
-        valid, error = await action.validate_params(
-            to="test@example.com", body="Body"
-        )
+        valid, error = await action.validate_params(to="test@example.com", body="Body")
         assert valid is False
         assert "subject" in error.lower()
 
-        valid, error = await action.validate_params(
-            to="test@example.com", subject="Test"
-        )
+        valid, error = await action.validate_params(to="test@example.com", subject="Test")
         assert valid is False
         assert "body" in error.lower()
 
@@ -278,6 +271,7 @@ class TestIntentPatterns:
     def classifier(self, mock_claude):
         """Create classifier with mocks."""
         from gru.intent import IntentClassifier
+
         return IntentClassifier(claude=mock_claude)
 
     async def test_classify_create_prd(self, classifier):

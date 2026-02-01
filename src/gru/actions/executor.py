@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
-from gru.actions.base import ActionContext, ActionResult, ActionStatus
+from gru.actions.base import ActionContext, ActionResult
 from gru.actions.browser import Browser, BrowserConfig, get_browser, shutdown_browser
 from gru.actions.registry import get_registry
 
@@ -93,10 +94,8 @@ class ActionExecutor:
 
         if self._scheduler_task:
             self._scheduler_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._scheduler_task
-            except asyncio.CancelledError:
-                pass
             self._scheduler_task = None
 
         await shutdown_browser()
@@ -108,28 +107,20 @@ class ActionExecutor:
         """Background loop to execute scheduled actions."""
         while self._running:
             try:
-                now = datetime.now()
+                datetime.now()
 
                 # Find due actions
-                due = [
-                    action for action in self._scheduled.values()
-                    if action.is_due
-                ]
+                due = [action for action in self._scheduled.values() if action.is_due]
 
                 for action in due:
                     logger.info(f"Executing scheduled action: {action.action_name}")
-                    result = await self.execute(
-                        action.action_name,
-                        user_id=action.user_id,
-                        **action.params
-                    )
+                    result = await self.execute(action.action_name, user_id=action.user_id, **action.params)
 
                     # Notify on completion
                     if self._notify_callback:
                         status = "completed" if result.success else "failed"
                         self._notify_callback(
-                            action.user_id,
-                            f"Scheduled action {action.action_name} {status}: {result.message}"
+                            action.user_id, f"Scheduled action {action.action_name} {status}: {result.message}"
                         )
 
                     # Remove from scheduled
@@ -144,11 +135,7 @@ class ActionExecutor:
                 await asyncio.sleep(60)
 
     async def execute(
-        self,
-        action_name: str,
-        user_id: str = "default",
-        location: dict[str, Any] | None = None,
-        **params
+        self, action_name: str, user_id: str = "default", location: dict[str, Any] | None = None, **params
     ) -> ActionResult:
         """Execute an action.
 
@@ -194,13 +181,7 @@ class ActionExecutor:
         registry = get_registry()
         return await registry.execute(action_name, context, **params)
 
-    def schedule(
-        self,
-        action_name: str,
-        execute_at: datetime | timedelta,
-        user_id: str = "default",
-        **params
-    ) -> str:
+    def schedule(self, action_name: str, execute_at: datetime | timedelta, user_id: str = "default", **params) -> str:
         """Schedule an action for future execution.
 
         Args:
@@ -242,13 +223,15 @@ class ActionExecutor:
         for action in self._scheduled.values():
             if user_id and action.user_id != user_id:
                 continue
-            actions.append({
-                "id": action.id,
-                "action": action.action_name,
-                "execute_at": action.execute_at.isoformat(),
-                "params": action.params,
-                "user_id": action.user_id,
-            })
+            actions.append(
+                {
+                    "id": action.id,
+                    "action": action.action_name,
+                    "execute_at": action.execute_at.isoformat(),
+                    "params": action.params,
+                    "user_id": action.user_id,
+                }
+            )
         return sorted(actions, key=lambda x: x["execute_at"])
 
     def list_actions(self, category: str | None = None) -> list[dict[str, Any]]:

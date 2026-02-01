@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import uuid
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from gru.config import Config
@@ -78,10 +80,7 @@ class LearnedPattern:
         elif self.pattern_type == "time_and_day":
             target_hour = self.parameters.get("hour", -1)
             target_day = self.parameters.get("weekday", -1)
-            return (
-                abs(now.hour - target_hour) <= HOUR_TOLERANCE
-                and now.weekday() == target_day
-            )
+            return abs(now.hour - target_hour) <= HOUR_TOLERANCE and now.weekday() == target_day
 
         elif self.pattern_type == "location":
             target_location = self.parameters.get("location")
@@ -257,8 +256,7 @@ class ProactiveEngine:
         await self._load_observations()
         await self._load_patterns()
         logger.info(
-            f"Proactive engine initialized with {len(self._triggers)} triggers, "
-            f"{len(self._patterns)} learned patterns"
+            f"Proactive engine initialized with {len(self._triggers)} triggers, {len(self._patterns)} learned patterns"
         )
 
     async def _migrate_tables(self) -> None:
@@ -405,10 +403,8 @@ class ProactiveEngine:
         self._running = False
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
         logger.info("Proactive engine stopped")
 
     async def _run_loop(self) -> None:
@@ -437,7 +433,7 @@ class ProactiveEngine:
 
     async def _check_observations(self) -> None:
         """Check observations and notify about important ones."""
-        now = datetime.now()
+        datetime.now()
 
         # Clean up expired observations
         expired = [obs_id for obs_id, obs in self._observations.items() if obs.is_expired()]
@@ -489,17 +485,13 @@ class ProactiveEngine:
                 )
                 await self.db.commit()
 
-    async def _anticipate_from_pattern(
-        self, pattern: LearnedPattern, context: dict[str, Any]
-    ) -> None:
+    async def _anticipate_from_pattern(self, pattern: LearnedPattern, context: dict[str, Any]) -> None:
         """Generate anticipatory action based on a matched pattern."""
         action = pattern.action
 
         if action == "check_email":
             # Proactively summarize email
-            await self._notify(
-                f"You usually check email around now. Want me to summarize your inbox?"
-            )
+            await self._notify("You usually check email around now. Want me to summarize your inbox?")
 
         elif action == "check_calendar":
             # Proactively check upcoming events
@@ -517,16 +509,12 @@ class ProactiveEngine:
 
         elif action == "commute":
             # Check traffic for commute
-            await self._notify(
-                "You usually leave around now. Want me to check traffic?"
-            )
+            await self._notify("You usually leave around now. Want me to check traffic?")
 
         elif action.startswith("search:"):
             # User often searches for this topic
             topic = action[7:]
-            await self._notify(
-                f"You often look up {topic} around this time. Want an update?"
-            )
+            await self._notify(f"You often look up {topic} around this time. Want an update?")
 
         else:
             # Generic pattern notification
@@ -566,12 +554,14 @@ class ProactiveEngine:
         # Group by action
         actions: dict[str, list[dict]] = defaultdict(list)
         for row in rows:
-            actions[row["action"]].append({
-                "hour": row["hour"],
-                "weekday": row["weekday"],
-                "timestamp": datetime.fromisoformat(row["timestamp"]),
-                "context": json.loads(row["context"]) if row.get("context") else {},
-            })
+            actions[row["action"]].append(
+                {
+                    "hour": row["hour"],
+                    "weekday": row["weekday"],
+                    "timestamp": datetime.fromisoformat(row["timestamp"]),
+                    "context": json.loads(row["context"]) if row.get("context") else {},
+                }
+            )
 
         # Detect time-of-day patterns
         for action, events in actions.items():
@@ -712,9 +702,7 @@ class ProactiveEngine:
                     )
                 break
 
-    async def _save_insight(
-        self, insight_type: str, content: str, data: dict[str, Any] | None = None
-    ) -> str:
+    async def _save_insight(self, insight_type: str, content: str, data: dict[str, Any] | None = None) -> str:
         """Save a generated insight."""
         insight_id = str(uuid.uuid4())[:12]
         await self.db.execute(
@@ -801,9 +789,7 @@ class ProactiveEngine:
                 count = len(pending)
                 high_priority = sum(1 for o in pending if o.importance >= 0.7)
                 if high_priority > 0:
-                    await self._notify(
-                        f"You have {count} pending items, {high_priority} high priority"
-                    )
+                    await self._notify(f"You have {count} pending items, {high_priority} high priority")
 
         elif check_type == "daily_summary":
             await self._generate_daily_summary()
@@ -871,22 +857,24 @@ class ProactiveEngine:
         # Calendar - today's schedule
         if self._google_connector:
             try:
-                from datetime import timezone
-
                 now = datetime.utcnow()
                 time_min = now.isoformat() + "Z"
                 # Get events for the rest of today
                 end_of_day = now.replace(hour=23, minute=59, second=59)
                 time_max = end_of_day.isoformat() + "Z"
 
-                events_result = self._google_connector._calendar_service.events().list(
-                    calendarId="primary",
-                    timeMin=time_min,
-                    timeMax=time_max,
-                    maxResults=10,
-                    singleEvents=True,
-                    orderBy="startTime",
-                ).execute()
+                events_result = (
+                    self._google_connector._calendar_service.events()
+                    .list(
+                        calendarId="primary",
+                        timeMin=time_min,
+                        timeMax=time_max,
+                        maxResults=10,
+                        singleEvents=True,
+                        orderBy="startTime",
+                    )
+                    .execute()
+                )
 
                 events = events_result.get("items", [])
                 if events:
@@ -916,20 +904,30 @@ class ProactiveEngine:
         # Email - unread count and important ones
         if self._google_connector:
             try:
-                results = self._google_connector._gmail_service.users().messages().list(
-                    userId="me",
-                    q="is:unread",
-                    maxResults=50,
-                ).execute()
+                results = (
+                    self._google_connector._gmail_service.users()
+                    .messages()
+                    .list(
+                        userId="me",
+                        q="is:unread",
+                        maxResults=50,
+                    )
+                    .execute()
+                )
 
                 total_unread = results.get("resultSizeEstimate", 0)
 
                 # Get important unread
-                important_results = self._google_connector._gmail_service.users().messages().list(
-                    userId="me",
-                    q="is:unread is:important",
-                    maxResults=5,
-                ).execute()
+                important_results = (
+                    self._google_connector._gmail_service.users()
+                    .messages()
+                    .list(
+                        userId="me",
+                        q="is:unread is:important",
+                        maxResults=5,
+                    )
+                    .execute()
+                )
 
                 important_msgs = important_results.get("messages", [])
 
@@ -939,12 +937,17 @@ class ProactiveEngine:
                 if important_msgs:
                     parts.append(f"  {len(important_msgs)} marked important:")
                     for msg_meta in important_msgs[:3]:
-                        msg = self._google_connector._gmail_service.users().messages().get(
-                            userId="me",
-                            id=msg_meta["id"],
-                            format="metadata",
-                            metadataHeaders=["From", "Subject"],
-                        ).execute()
+                        msg = (
+                            self._google_connector._gmail_service.users()
+                            .messages()
+                            .get(
+                                userId="me",
+                                id=msg_meta["id"],
+                                format="metadata",
+                                metadataHeaders=["From", "Subject"],
+                            )
+                            .execute()
+                        )
 
                         headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
                         from_header = headers.get("From", "Unknown")
@@ -1011,6 +1014,7 @@ class ProactiveEngine:
 
             if workflow == "daily":
                 from gru.tools.research import start_daily_research
+
                 await self._notify("Starting daily AI research... I'll have your morning report ready soon.")
                 result = await start_daily_research(notify_chat_id=notify_chat_id)
 
@@ -1021,6 +1025,7 @@ class ProactiveEngine:
 
             elif workflow == "monitor":
                 from gru.tools.research import check_breaking_news
+
                 logger.info("Running real-time AI monitoring check...")
                 result = await check_breaking_news(notify=True)
 
@@ -1170,7 +1175,7 @@ class ProactiveEngine:
 
         # Store as memory fact too if memory is available
         if self.memory and importance >= 0.6:
-            try:
+            with contextlib.suppress(Exception):
                 await self.memory.store_fact(
                     fact_type="context",
                     subject="agent",
@@ -1178,8 +1183,6 @@ class ProactiveEngine:
                     obj=content[:200],
                     confidence=importance,
                 )
-            except Exception:
-                pass
 
         logger.info(f"Added observation: {content[:50]}... ({obs_id})")
         return obs_id
@@ -1282,10 +1285,7 @@ class ProactiveEngine:
         return {
             "total": total["count"] if total else 0,
             "by_action": [{"action": r["action"], "count": r["count"]} for r in by_action],
-            "recent": [
-                {"action": r["action"], "timestamp": r["timestamp"], "hour": r["hour"]}
-                for r in recent
-            ],
+            "recent": [{"action": r["action"], "timestamp": r["timestamp"], "hour": r["hour"]} for r in recent],
         }
 
     # Public API for patterns
@@ -1333,9 +1333,7 @@ class ProactiveEngine:
 
     async def mark_insight_shown(self, insight_id: str) -> bool:
         """Mark an insight as shown."""
-        await self.db.execute(
-            "UPDATE proactive_insights SET shown = 1 WHERE id = ?", (insight_id,)
-        )
+        await self.db.execute("UPDATE proactive_insights SET shown = 1 WHERE id = ?", (insight_id,))
         await self.db.commit()
         return True
 
@@ -1386,10 +1384,7 @@ class ProactiveEngine:
         # Upcoming patterns
         now = datetime.now()
         context = await self._build_context()
-        matching_patterns = [
-            p for p in self._patterns.values()
-            if p.matches_now(now, context)
-        ]
+        matching_patterns = [p for p in self._patterns.values() if p.matches_now(now, context)]
         if matching_patterns:
             patterns_str = ", ".join(p.description for p in matching_patterns[:3])
             parts.append(f"Matching patterns: {patterns_str}")

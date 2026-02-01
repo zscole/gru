@@ -219,17 +219,17 @@ INTENT_PATTERNS = [
 
 # Meal times (default)
 MEAL_TIMES = {
-    "breakfast": (7, 9),   # 7am-9am
-    "lunch": (11, 13),     # 11am-1pm
-    "dinner": (18, 20),    # 6pm-8pm
+    "breakfast": (7, 9),  # 7am-9am
+    "lunch": (11, 13),  # 11am-1pm
+    "dinner": (18, 20),  # 6pm-8pm
 }
 
 # Time of day keywords
 TIME_OF_DAY = {
-    "morning": (6, 9),     # 6am-9am
-    "tonight": (20, 23),   # 8pm-11pm
-    "tomorrow": None,      # Next day, handled specially
-    "end of day": (17, 18), # 5pm-6pm
+    "morning": (6, 9),  # 6am-9am
+    "tonight": (20, 23),  # 8pm-11pm
+    "tomorrow": None,  # Next day, handled specially
+    "end of day": (17, 18),  # 5pm-6pm
     "eod": (17, 18),
 }
 
@@ -591,12 +591,7 @@ async def execute_intent(
         now = datetime.now()
         if intent.schedule_for > now + timedelta(minutes=5):
             # Schedule for later
-            schedule_id = executor.schedule(
-                action_name,
-                execute_at=intent.schedule_for,
-                user_id=user_id,
-                **params
-            )
+            schedule_id = executor.schedule(action_name, execute_at=intent.schedule_for, user_id=user_id, **params)
             return {
                 "executed": False,
                 "scheduled": True,

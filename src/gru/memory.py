@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -251,7 +251,13 @@ class MemoryStore:
             INSERT INTO memory_embeddings (id, content_type, content_preview, source_agent_id, metadata)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (embed_id, "conversation", conversation_summary[:500], agent_id, json.dumps(metadata) if metadata else None),
+            (
+                embed_id,
+                "conversation",
+                conversation_summary[:500],
+                agent_id,
+                json.dumps(metadata) if metadata else None,
+            ),
         )
         await self.db.commit()
 
@@ -400,10 +406,8 @@ class MemoryStore:
 
         # Remove from vector store
         if self._collection is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._collection.delete(ids=[fact_id])
-            except Exception:
-                pass
 
         return cursor.rowcount > 0
 
@@ -422,10 +426,7 @@ class MemoryStore:
             "total_facts": total["count"] if total else 0,
             "by_type": {row["fact_type"]: row["count"] for row in by_type},
             "total_embeddings": embeddings["count"] if embeddings else 0,
-            "most_accessed": [
-                f"{row['subject']} {row['predicate']} {row['object']}"
-                for row in most_accessed
-            ],
+            "most_accessed": [f"{row['subject']} {row['predicate']} {row['object']}" for row in most_accessed],
         }
 
     async def process_feedback(self, feedback: str, claude_client: Any) -> list[str]:

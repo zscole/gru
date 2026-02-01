@@ -6,6 +6,8 @@ This module exposes the Orchestrator's agent management to the chat agent.
 from __future__ import annotations
 
 import logging
+import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from gru.tools.base import register_tool
@@ -148,9 +150,6 @@ async def nudge_agent(agent_id: str, message: str) -> dict[str, Any]:
         return {"error": str(e)}
 
 
-import os
-from pathlib import Path
-
 # Dynamically determine source directory
 GRU_SOURCE_DIR = str(Path(__file__).parent.parent.parent.parent)
 
@@ -250,8 +249,6 @@ Be careful not to break existing functionality. Make minimal, focused changes.
 async def restart_gru() -> dict[str, Any]:
     """Restart Gru to apply code changes."""
     import subprocess
-    import sys
-    import os
 
     try:
         # Start new instance before killing current one

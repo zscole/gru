@@ -61,18 +61,22 @@ async def get_person_info(name: str) -> dict:
         relationships = []
 
         for rel in info["relationships"]["outgoing"][:10]:
-            relationships.append({
-                "type": rel["relationship_type"],
-                "to": rel["to_name"],
-                "context": rel.get("context"),
-            })
+            relationships.append(
+                {
+                    "type": rel["relationship_type"],
+                    "to": rel["to_name"],
+                    "context": rel.get("context"),
+                }
+            )
 
         for rel in info["relationships"]["incoming"][:10]:
-            relationships.append({
-                "type": f"{rel['from_name']} {rel['relationship_type']}",
-                "to": name,
-                "context": rel.get("context"),
-            })
+            relationships.append(
+                {
+                    "type": f"{rel['from_name']} {rel['relationship_type']}",
+                    "to": name,
+                    "context": rel.get("context"),
+                }
+            )
 
         return {
             "name": entity["name"],

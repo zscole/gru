@@ -151,18 +151,10 @@ class KnowledgeGraph:
         """)
 
         # Create indexes
-        await self.db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_kg_entities_type ON kg_entities(entity_type, active)"
-        )
-        await self.db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_kg_entities_name ON kg_entities(name)"
-        )
-        await self.db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_kg_interactions_time ON kg_interactions(timestamp)"
-        )
-        await self.db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_kg_interactions_source ON kg_interactions(source)"
-        )
+        await self.db.execute("CREATE INDEX IF NOT EXISTS idx_kg_entities_type ON kg_entities(entity_type, active)")
+        await self.db.execute("CREATE INDEX IF NOT EXISTS idx_kg_entities_name ON kg_entities(name)")
+        await self.db.execute("CREATE INDEX IF NOT EXISTS idx_kg_interactions_time ON kg_interactions(timestamp)")
+        await self.db.execute("CREATE INDEX IF NOT EXISTS idx_kg_interactions_source ON kg_interactions(source)")
 
         await self.db.commit()
         logger.info("Knowledge graph initialized")
@@ -235,9 +227,7 @@ class KnowledgeGraph:
             return dict(row)
 
         # Search in aliases
-        all_entities = await self.db.fetchall(
-            "SELECT * FROM kg_entities WHERE active = 1"
-        )
+        all_entities = await self.db.fetchall("SELECT * FROM kg_entities WHERE active = 1")
         name_lower = name.lower()
         for entity in all_entities:
             aliases = json.loads(entity.get("aliases") or "[]")
@@ -449,16 +439,16 @@ class KnowledgeGraph:
             entity_ids = json.loads(interaction.get("entity_ids") or "[]")
             entity_names = []
             for eid in entity_ids:
-                entity = await self.db.fetchone(
-                    "SELECT name FROM kg_entities WHERE id = ?", (eid,)
-                )
+                entity = await self.db.fetchone("SELECT name FROM kg_entities WHERE id = ?", (eid,))
                 if entity:
                     entity_names.append(entity["name"])
 
-            results.append({
-                **dict(interaction),
-                "entity_names": entity_names,
-            })
+            results.append(
+                {
+                    **dict(interaction),
+                    "entity_names": entity_names,
+                }
+            )
 
         return results
 
@@ -527,10 +517,7 @@ class KnowledgeGraph:
             if entity_name:
                 entity_info = await self.query_entity(entity_name)
                 if entity_info:
-                    all_rels = (
-                        entity_info["relationships"]["outgoing"]
-                        + entity_info["relationships"]["incoming"]
-                    )
+                    all_rels = entity_info["relationships"]["outgoing"] + entity_info["relationships"]["incoming"]
                     results.append(f"Relationships for {entity_name}:")
                     for rel in all_rels[:10]:
                         other = rel.get("to_name") or rel.get("from_name")
@@ -631,11 +618,7 @@ Return ONLY valid JSON:
             role = msg.get("role", "unknown")
             content = msg.get("content", "")
             if isinstance(content, list):
-                text_parts = [
-                    b.get("text", "")
-                    for b in content
-                    if isinstance(b, dict) and b.get("type") == "text"
-                ]
+                text_parts = [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
                 content = " ".join(text_parts)
             if content:
                 conv_text.append(f"{role.upper()}: {content[:400]}")
@@ -700,8 +683,7 @@ Return ONLY valid JSON:
                 counts["interactions"] += 1
 
             logger.info(
-                f"Extracted {counts['entities']} entities, "
-                f"{counts['relationships']} relationships from conversation"
+                f"Extracted {counts['entities']} entities, {counts['relationships']} relationships from conversation"
             )
             return counts
 
@@ -842,13 +824,9 @@ Return ONLY valid JSON:
             """
         )
 
-        total_relationships = await self.db.fetchone(
-            "SELECT COUNT(*) as count FROM kg_relationships"
-        )
+        total_relationships = await self.db.fetchone("SELECT COUNT(*) as count FROM kg_relationships")
 
-        total_interactions = await self.db.fetchone(
-            "SELECT COUNT(*) as count FROM kg_interactions"
-        )
+        total_interactions = await self.db.fetchone("SELECT COUNT(*) as count FROM kg_interactions")
 
         recent_interactions = await self.db.fetchone(
             """

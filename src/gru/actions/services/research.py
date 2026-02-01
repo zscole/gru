@@ -57,9 +57,7 @@ class ResearchAction(Action):
 
         claude = get_research_claude()
         if not claude:
-            return ActionResult.error_result(
-                "Research requires Claude client. Not configured."
-            )
+            return ActionResult.error_result("Research requires Claude client. Not configured.")
 
         try:
             # Phase 1: Generate search queries
@@ -71,14 +69,10 @@ class ResearchAction(Action):
             logger.info(f"Gathered {len(sources)} sources")
 
             if not sources:
-                return ActionResult.error_result(
-                    f"Could not find relevant information about: {topic}"
-                )
+                return ActionResult.error_result(f"Could not find relevant information about: {topic}")
 
             # Phase 3: Synthesize research into report
-            report = await self._synthesize_report(
-                claude, topic, sources, output_format, depth
-            )
+            report = await self._synthesize_report(claude, topic, sources, output_format, depth)
             logger.info(f"Generated report: {len(report)} chars")
 
             result_data = {
@@ -98,8 +92,7 @@ class ResearchAction(Action):
                     # Notify user
                     if notify_user and context.notify_callback:
                         await context.notify_callback(
-                            context.user_id,
-                            f"Research complete: {topic}\n\n{doc_result['url']}"
+                            context.user_id, f"Research complete: {topic}\n\n{doc_result['url']}"
                         )
 
                     return ActionResult.success_result(
@@ -146,17 +139,13 @@ Return ONLY the queries, one per line, no numbering or bullets."""
                 max_tokens=500,
             )
 
-            queries = [
-                q.strip()
-                for q in response.content.strip().split("\n")
-                if q.strip() and len(q.strip()) > 5
-            ]
+            queries = [q.strip() for q in response.content.strip().split("\n") if q.strip() and len(q.strip()) > 5]
 
             # Always include the original topic as a query
             if topic not in queries:
                 queries.insert(0, topic)
 
-            return queries[:self.max_searches]
+            return queries[: self.max_searches]
 
         except Exception as e:
             logger.warning(f"Query generation failed: {e}")
@@ -195,12 +184,14 @@ Return ONLY the queries, one per line, no numbering or bullets."""
                         url = item.get("url", "")
                         if url and url not in seen_urls:
                             seen_urls.add(url)
-                            sources.append({
-                                "query": query,
-                                "title": item.get("title", ""),
-                                "url": url,
-                                "snippet": item.get("snippet", ""),
-                            })
+                            sources.append(
+                                {
+                                    "query": query,
+                                    "title": item.get("title", ""),
+                                    "url": url,
+                                    "snippet": item.get("snippet", ""),
+                                }
+                            )
 
                 # Small delay between searches
                 await asyncio.sleep(0.5)
@@ -224,10 +215,7 @@ Return ONLY the queries, one per line, no numbering or bullets."""
     ) -> str:
         """Synthesize gathered information into a coherent report."""
         # Format sources for Claude
-        sources_text = "\n\n".join([
-            f"Source: {s['title']}\nURL: {s['url']}\nContent: {s['snippet']}"
-            for s in sources
-        ])
+        sources_text = "\n\n".join([f"Source: {s['title']}\nURL: {s['url']}\nContent: {s['snippet']}" for s in sources])
 
         format_instructions = {
             "report": """Write a comprehensive research report covering the executive summary, key findings organized by theme, detailed analysis, and recommendations.""",
@@ -280,21 +268,22 @@ Sources Analyzed: {len(sources)}
     def _strip_markdown(self, text: str) -> str:
         """Remove markdown formatting from text."""
         import re
+
         # Remove headers (# ## ### etc)
-        text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
         # Remove bold/italic markers
-        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
-        text = re.sub(r'\*([^*]+)\*', r'\1', text)
-        text = re.sub(r'__([^_]+)__', r'\1', text)
-        text = re.sub(r'_([^_]+)_', r'\1', text)
+        text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+        text = re.sub(r"\*([^*]+)\*", r"\1", text)
+        text = re.sub(r"__([^_]+)__", r"\1", text)
+        text = re.sub(r"_([^_]+)_", r"\1", text)
         # Remove horizontal rules
-        text = re.sub(r'^[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^[-*_]{3,}\s*$", "", text, flags=re.MULTILINE)
         # Remove bullet points but keep content
-        text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^\s*[-*+]\s+", "", text, flags=re.MULTILINE)
         # Remove numbered lists markers but keep content
-        text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^\s*\d+\.\s+", "", text, flags=re.MULTILINE)
         # Clean up extra blank lines
-        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
 
     async def _write_to_doc(
@@ -339,6 +328,7 @@ class QuickAnswerAction(Action):
             return ActionResult.error_result("Claude client not configured")
 
         from gru.actions.registry import get_registry
+
         registry = get_registry()
 
         try:
@@ -366,18 +356,20 @@ class QuickAnswerAction(Action):
                 )
 
             # Synthesize answer from sources
-            sources_text = "\n".join([
-                f"- {s.get('title', '')}: {s.get('snippet', '')}"
-                for s in sources
-            ])
+            sources_text = "\n".join([f"- {s.get('title', '')}: {s.get('snippet', '')}" for s in sources])
 
             response = await claude.send_message(
-                messages=[{"role": "user", "content": f"""Question: {question}
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"""Question: {question}
 
 Sources:
 {sources_text}
 
-Provide a concise, accurate answer based on these sources."""}],
+Provide a concise, accurate answer based on these sources.""",
+                    }
+                ],
                 system="Answer questions concisely and accurately. Cite sources when relevant.",
                 max_tokens=500,
             )

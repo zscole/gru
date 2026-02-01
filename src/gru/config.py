@@ -90,7 +90,7 @@ class Config:
     browser_type: str = "chromium"  # chromium, firefox, webkit
     browser_timeout: int = 30000  # ms
     action_confirm_payments: bool = True  # Require confirmation for purchases
-    
+
     # Voice Messages
     voice_enabled: bool = True  # Enable voice message support
     voice_tts_provider: str = "edge"  # TTS provider: eleven_labs, openai, edge

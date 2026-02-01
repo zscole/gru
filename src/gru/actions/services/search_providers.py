@@ -7,7 +7,6 @@ import os
 import re
 import urllib.parse
 from abc import ABC, abstractmethod
-from typing import Any
 
 import aiohttp
 
@@ -58,32 +57,29 @@ class StartpageProvider(SearchProvider):
             "Accept-Language": "en-US,en;q=0.9",
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as resp:
-                if resp.status != 200:
-                    logger.warning(f"Startpage returned status {resp.status}")
-                    return []
+        async with aiohttp.ClientSession() as session, session.get(url, headers=headers) as resp:
+            if resp.status != 200:
+                logger.warning(f"Startpage returned status {resp.status}")
+                return []
 
-                html = await resp.text()
+            html = await resp.text()
 
         results = []
         # Startpage results have class "result-link" for the main link
         # and class "w-gl__result-title" for titles
 
         # Pattern to find result links
-        link_pattern = re.compile(
-            r'<a[^>]*class="[^"]*result-link[^"]*"[^>]*href="([^"]+)"[^>]*>.*?</a>',
-            re.DOTALL | re.IGNORECASE
-        )
+        re.compile(r'<a[^>]*class="[^"]*result-link[^"]*"[^>]*href="([^"]+)"[^>]*>.*?</a>', re.DOTALL | re.IGNORECASE)
 
         # Find all result containers
-        result_pattern = re.compile(
-            r'<div[^>]*class="[^"]*w-gl__result[^"]*"[^>]*>(.*?)</div>\s*</div>\s*</div>',
-            re.DOTALL | re.IGNORECASE
+        re.compile(
+            r'<div[^>]*class="[^"]*w-gl__result[^"]*"[^>]*>(.*?)</div>\s*</div>\s*</div>', re.DOTALL | re.IGNORECASE
         )
 
         # Simpler approach: find result-link anchors
-        for match in re.finditer(r'<a[^>]*class="[^"]*result-link[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', html, re.DOTALL | re.IGNORECASE):
+        for match in re.finditer(
+            r'<a[^>]*class="[^"]*result-link[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', html, re.DOTALL | re.IGNORECASE
+        ):
             if len(results) >= num_results:
                 break
 
@@ -91,7 +87,7 @@ class StartpageProvider(SearchProvider):
             title_html = match.group(2)
 
             # Clean title
-            title = re.sub(r'<[^>]+>', '', title_html).strip()
+            title = re.sub(r"<[^>]+>", "", title_html).strip()
 
             # Skip if not a real URL
             if not url.startswith("http"):
@@ -124,13 +120,12 @@ class BingProvider(SearchProvider):
             "Accept-Language": "en-US,en;q=0.9",
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as resp:
-                if resp.status != 200:
-                    logger.warning(f"Bing returned status {resp.status}")
-                    return []
+        async with aiohttp.ClientSession() as session, session.get(url, headers=headers) as resp:
+            if resp.status != 200:
+                logger.warning(f"Bing returned status {resp.status}")
+                return []
 
-                html = await resp.text()
+            html = await resp.text()
 
         results = []
         # Bing results are in <li class="b_algo"> elements
@@ -138,10 +133,7 @@ class BingProvider(SearchProvider):
         # Snippet in <p> or <div class="b_caption">
 
         # Pattern for result blocks
-        algo_pattern = re.compile(
-            r'<li[^>]*class="b_algo"[^>]*>(.*?)</li>',
-            re.DOTALL | re.IGNORECASE
-        )
+        algo_pattern = re.compile(r'<li[^>]*class="b_algo"[^>]*>(.*?)</li>', re.DOTALL | re.IGNORECASE)
 
         for match in algo_pattern.finditer(html):
             if len(results) >= num_results:
@@ -151,23 +143,19 @@ class BingProvider(SearchProvider):
 
             # Extract URL and title from <h2><a>
             link_match = re.search(
-                r'<h2[^>]*>.*?<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
-                block, re.DOTALL | re.IGNORECASE
+                r'<h2[^>]*>.*?<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', block, re.DOTALL | re.IGNORECASE
             )
             if not link_match:
                 continue
 
             url = link_match.group(1)
-            title = re.sub(r'<[^>]+>', '', link_match.group(2)).strip()
+            title = re.sub(r"<[^>]+>", "", link_match.group(2)).strip()
 
             # Extract snippet
             snippet = ""
-            snippet_match = re.search(
-                r'<p[^>]*>(.*?)</p>',
-                block, re.DOTALL | re.IGNORECASE
-            )
+            snippet_match = re.search(r"<p[^>]*>(.*?)</p>", block, re.DOTALL | re.IGNORECASE)
             if snippet_match:
-                snippet = re.sub(r'<[^>]+>', '', snippet_match.group(1)).strip()[:200]
+                snippet = re.sub(r"<[^>]+>", "", snippet_match.group(1)).strip()[:200]
 
             if title and url.startswith("http"):
                 results.append(SearchResult(title, url, snippet))
@@ -190,32 +178,27 @@ class DuckDuckGoProvider(SearchProvider):
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as resp:
-                if resp.status != 200:
-                    logger.warning(f"DuckDuckGo returned status {resp.status}")
-                    return []
+        async with aiohttp.ClientSession() as session, session.get(url, headers=headers) as resp:
+            if resp.status != 200:
+                logger.warning(f"DuckDuckGo returned status {resp.status}")
+                return []
 
-                html = await resp.text()
+            html = await resp.text()
 
         results = []
         # Parse results from HTML
         # DuckDuckGo HTML results are in <a class="result__a"> tags
-        result_pattern = re.compile(
+        re.compile(
             r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([^<]+)</a>.*?'
             r'<a[^>]*class="result__snippet"[^>]*>([^<]*(?:<[^>]*>[^<]*)*)</a>',
-            re.DOTALL | re.IGNORECASE
+            re.DOTALL | re.IGNORECASE,
         )
 
         # Simpler pattern for just links and titles
         link_pattern = re.compile(
-            r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
-            re.DOTALL | re.IGNORECASE
+            r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.DOTALL | re.IGNORECASE
         )
-        snippet_pattern = re.compile(
-            r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>',
-            re.DOTALL | re.IGNORECASE
-        )
+        snippet_pattern = re.compile(r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>', re.DOTALL | re.IGNORECASE)
 
         links = link_pattern.findall(html)
         snippets = snippet_pattern.findall(html)
@@ -224,17 +207,17 @@ class DuckDuckGoProvider(SearchProvider):
             # Clean up the URL (DuckDuckGo uses redirect URLs)
             actual_url = href
             if "uddg=" in href:
-                match = re.search(r'uddg=([^&]+)', href)
+                match = re.search(r"uddg=([^&]+)", href)
                 if match:
                     actual_url = urllib.parse.unquote(match.group(1))
 
             # Clean HTML tags from title
-            clean_title = re.sub(r'<[^>]+>', '', title).strip()
+            clean_title = re.sub(r"<[^>]+>", "", title).strip()
 
             # Get corresponding snippet
             snippet = ""
             if i < len(snippets):
-                snippet = re.sub(r'<[^>]+>', '', snippets[i]).strip()[:200]
+                snippet = re.sub(r"<[^>]+>", "", snippets[i]).strip()[:200]
 
             if clean_title and actual_url.startswith("http"):
                 results.append(SearchResult(clean_title, actual_url, snippet))
@@ -266,21 +249,22 @@ class BraveSearchProvider(SearchProvider):
         }
         params = {"q": query, "count": num_results}
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, params=params) as resp:
-                if resp.status != 200:
-                    logger.warning(f"Brave Search returned status {resp.status}")
-                    return []
+        async with aiohttp.ClientSession() as session, session.get(url, headers=headers, params=params) as resp:
+            if resp.status != 200:
+                logger.warning(f"Brave Search returned status {resp.status}")
+                return []
 
-                data = await resp.json()
+            data = await resp.json()
 
         results = []
         for item in data.get("web", {}).get("results", [])[:num_results]:
-            results.append(SearchResult(
-                title=item.get("title", ""),
-                url=item.get("url", ""),
-                snippet=item.get("description", "")[:200],
-            ))
+            results.append(
+                SearchResult(
+                    title=item.get("title", ""),
+                    url=item.get("url", ""),
+                    snippet=item.get("description", "")[:200],
+                )
+            )
 
         logger.info(f"Brave Search returned {len(results)} results for: {query}")
         return results
@@ -310,21 +294,22 @@ class SerpAPIProvider(SearchProvider):
             "num": num_results,
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, params=params) as resp:
-                if resp.status != 200:
-                    logger.warning(f"SerpAPI returned status {resp.status}")
-                    return []
+        async with aiohttp.ClientSession() as session, session.get(url, params=params) as resp:
+            if resp.status != 200:
+                logger.warning(f"SerpAPI returned status {resp.status}")
+                return []
 
-                data = await resp.json()
+            data = await resp.json()
 
         results = []
         for item in data.get("organic_results", [])[:num_results]:
-            results.append(SearchResult(
-                title=item.get("title", ""),
-                url=item.get("link", ""),
-                snippet=item.get("snippet", "")[:200],
-            ))
+            results.append(
+                SearchResult(
+                    title=item.get("title", ""),
+                    url=item.get("link", ""),
+                    snippet=item.get("snippet", "")[:200],
+                )
+            )
 
         logger.info(f"SerpAPI returned {len(results)} results for: {query}")
         return results
@@ -355,21 +340,22 @@ class GoogleCSEProvider(SearchProvider):
             "num": min(num_results, 10),  # CSE max is 10
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, params=params) as resp:
-                if resp.status != 200:
-                    logger.warning(f"Google CSE returned status {resp.status}")
-                    return []
+        async with aiohttp.ClientSession() as session, session.get(url, params=params) as resp:
+            if resp.status != 200:
+                logger.warning(f"Google CSE returned status {resp.status}")
+                return []
 
-                data = await resp.json()
+            data = await resp.json()
 
         results = []
         for item in data.get("items", [])[:num_results]:
-            results.append(SearchResult(
-                title=item.get("title", ""),
-                url=item.get("link", ""),
-                snippet=item.get("snippet", "")[:200],
-            ))
+            results.append(
+                SearchResult(
+                    title=item.get("title", ""),
+                    url=item.get("link", ""),
+                    snippet=item.get("snippet", "")[:200],
+                )
+            )
 
         logger.info(f"Google CSE returned {len(results)} results for: {query}")
         return results

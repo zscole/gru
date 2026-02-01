@@ -140,11 +140,13 @@ class Session:
 
     def add_message(self, role: str, content: str) -> None:
         """Add a message to the session."""
-        self.messages.append({
-            "role": role,
-            "content": content,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self.messages.append(
+            {
+                "role": role,
+                "content": content,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
         self.last_active = datetime.now()
 
     def get_recent_messages(self, limit: int = 20) -> list[dict[str, str]]:
@@ -184,6 +186,7 @@ class SessionManager:
         """Get or create intent classifier."""
         if self._intent_classifier is None:
             from gru.intent import IntentClassifier
+
             self._intent_classifier = IntentClassifier(
                 claude=self.claude,
                 memory=self.memory,
@@ -195,6 +198,7 @@ class SessionManager:
         """Get or create config manager."""
         if self._config_manager is None and self.data_dir:
             from gru.setup import get_config_manager
+
             self._config_manager = get_config_manager(self.data_dir)
         return self._config_manager
 
@@ -303,8 +307,7 @@ class SessionManager:
         self._user_personas[user_id] = persona
 
         # Update active session
-        session_key = None
-        for key, session in self._sessions.items():
+        for _key, session in self._sessions.items():
             if session.user_id == user_id:
                 session.persona = persona
                 await self._save_session(session)
@@ -385,7 +388,7 @@ class SessionManager:
             session.add_message("user", message)
             await self._save_session(session)
             return {
-                "response": f"I'll work on that for you. I'll let you know when it's done.",
+                "response": "I'll work on that for you. I'll let you know when it's done.",
                 "escalate": True,
                 "escalate_task": task or message,
                 "quick_action": None,
@@ -544,24 +547,25 @@ class SessionManager:
                 def strip_markdown(text: str) -> str:
                     """Remove all markdown formatting."""
                     import re
+
                     # Remove headers
-                    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
+                    text = re.sub(r"^#{1,6}\s*", "", text, flags=re.MULTILINE)
                     # Remove bold
-                    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
-                    text = re.sub(r'__([^_]+)__', r'\1', text)
+                    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+                    text = re.sub(r"__([^_]+)__", r"\1", text)
                     # Remove italic
-                    text = re.sub(r'\*([^*]+)\*', r'\1', text)
-                    text = re.sub(r'_([^_]+)_', r'\1', text)
+                    text = re.sub(r"\*([^*]+)\*", r"\1", text)
+                    text = re.sub(r"_([^_]+)_", r"\1", text)
                     # Remove any remaining asterisks
-                    text = text.replace('*', '')
+                    text = text.replace("*", "")
                     # Remove any remaining hashtags at line starts
-                    text = re.sub(r'^#+ *', '', text, flags=re.MULTILINE)
+                    text = re.sub(r"^#+ *", "", text, flags=re.MULTILINE)
                     # Remove horizontal rules
-                    text = re.sub(r'^[-_]{3,}\s*$', '', text, flags=re.MULTILINE)
+                    text = re.sub(r"^[-_]{3,}\s*$", "", text, flags=re.MULTILINE)
                     # Remove bullet markers
-                    text = re.sub(r'^\s*[-•]\s+', '', text, flags=re.MULTILINE)
+                    text = re.sub(r"^\s*[-•]\s+", "", text, flags=re.MULTILINE)
                     # Clean up extra blank lines
-                    text = re.sub(r'\n{3,}', '\n\n', text)
+                    text = re.sub(r"\n{3,}", "\n\n", text)
                     return text.strip()
 
                 async def run_research_background():
@@ -578,24 +582,23 @@ class SessionManager:
                     except Exception as e:
                         logger.error(f"Background research failed: {e}")
                         if self.action_executor and self.action_executor._notify_callback:
-                            await self.action_executor._notify_callback(
-                                user_id, f"Research failed: {e}"
-                            )
+                            await self.action_executor._notify_callback(user_id, f"Research failed: {e}")
 
                 # Start background task
                 asyncio.create_task(run_research_background())
 
                 # Return varied acknowledgment based on topic and context
                 import random
+
                 topic = intent.parameters.get("topic") or intent.parameters.get("query") or message
 
                 acknowledgments = [
                     f"On it. Looking into {topic[:50]}{'...' if len(topic) > 50 else ''}.",
-                    f"Got it. I'll dig into that and get back to you.",
-                    f"Researching now. Give me a moment.",
-                    f"Let me look into that for you.",
-                    f"Working on it. Back shortly with what I find.",
-                    f"Pulling together some info on that.",
+                    "Got it. I'll dig into that and get back to you.",
+                    "Researching now. Give me a moment.",
+                    "Let me look into that for you.",
+                    "Working on it. Back shortly with what I find.",
+                    "Pulling together some info on that.",
                 ]
                 response = random.choice(acknowledgments)
 
@@ -620,14 +623,10 @@ class SessionManager:
                 response_parts = []
 
                 if result.get("scheduled"):
-                    scheduled_time = result.get('scheduled_for', 'later')
-                    response_parts.append(
-                        f"Got it! I've scheduled that for {scheduled_time}."
-                    )
+                    scheduled_time = result.get("scheduled_for", "later")
+                    response_parts.append(f"Got it! I've scheduled that for {scheduled_time}.")
                     if intent.parameters.get("timed_to_event"):
-                        response_parts.append(
-                            f"Timed to arrive after your {intent.parameters['timed_to_event']}."
-                        )
+                        response_parts.append(f"Timed to arrive after your {intent.parameters['timed_to_event']}.")
                 elif result.get("executed"):
                     # Get action result data
                     action_data = result.get("result", {}).get("data", {})
@@ -706,7 +705,9 @@ class SessionManager:
 
         # Add formatting instructions based on channel
         if session.channel in ("telegram", "discord", "slack"):
-            parts.append("\nFormatting: Use plain text only. No markdown, no asterisks, no bullet points. Write conversationally in natural paragraphs.")
+            parts.append(
+                "\nFormatting: Use plain text only. No markdown, no asterisks, no bullet points. Write conversationally in natural paragraphs."
+            )
 
         return "\n".join(parts)
 
@@ -760,11 +761,10 @@ class SessionManager:
             Response dict if handled, None otherwise
         """
         from gru.setup import (
-            detect_key_type,
+            KEY_TYPE_NAMES,
+            KeyType,
             detect_multiple_keys,
             get_setup_wizard,
-            KeyType,
-            KEY_TYPE_NAMES,
         )
 
         cfg = self._get_config_manager()
@@ -846,7 +846,9 @@ class SessionManager:
                         wizard = get_setup_wizard(self.data_dir)
                         status = wizard.get_setup_status()
                         if not status["steps"]["messaging"]["configured"]:
-                            responses.append("\nTo complete setup, I need a messaging platform token (Telegram, Discord, or Slack).")
+                            responses.append(
+                                "\nTo complete setup, I need a messaging platform token (Telegram, Discord, or Slack)."
+                            )
 
             if responses:
                 # Don't store the key in conversation history (security)
@@ -958,7 +960,4 @@ class SessionManager:
 
 def get_available_personas() -> list[dict[str, str]]:
     """Get list of available personas."""
-    return [
-        {"name": p.name, "description": p.description}
-        for p in PERSONAS.values()
-    ]
+    return [{"name": p.name, "description": p.description} for p in PERSONAS.values()]

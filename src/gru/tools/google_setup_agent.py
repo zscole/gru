@@ -6,7 +6,6 @@ Google Cloud Console setup, leveraging the user's existing Google login.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -103,7 +102,7 @@ async def run_google_setup_agent(project_name: str = "gru-assistant") -> dict:
                     # Fill project name
                     name_input = await page.query_selector('input[aria-label="Project name"]')
                     if not name_input:
-                        name_input = await page.query_selector('#p6ntest-name-input')
+                        name_input = await page.query_selector("#p6ntest-name-input")
                     if name_input:
                         await name_input.fill(project_name)
                         await page.wait_for_timeout(500)
@@ -128,7 +127,7 @@ async def run_google_setup_agent(project_name: str = "gru-assistant") -> dict:
                 try:
                     await page.goto(
                         f"https://console.cloud.google.com/apis/library/{api_id}.googleapis.com",
-                        wait_until="domcontentloaded"
+                        wait_until="domcontentloaded",
                     )
                     await page.wait_for_timeout(2000)
 
@@ -142,10 +141,7 @@ async def run_google_setup_agent(project_name: str = "gru-assistant") -> dict:
 
             # Step 4: Create OAuth credentials
             logger.info("Creating OAuth credentials...")
-            await page.goto(
-                "https://console.cloud.google.com/apis/credentials",
-                wait_until="domcontentloaded"
-            )
+            await page.goto("https://console.cloud.google.com/apis/credentials", wait_until="domcontentloaded")
             await page.wait_for_timeout(2000)
 
             # Configure OAuth consent screen first if needed
@@ -175,7 +171,7 @@ async def run_google_setup_agent(project_name: str = "gru-assistant") -> dict:
                     await email_input.click()
                     await page.wait_for_timeout(500)
                     # Select from dropdown if present
-                    email_option = await page.query_selector('mat-option')
+                    email_option = await page.query_selector("mat-option")
                     if email_option:
                         await email_option.click()
 
@@ -190,8 +186,7 @@ async def run_google_setup_agent(project_name: str = "gru-assistant") -> dict:
 
             # Create OAuth Client ID
             await page.goto(
-                "https://console.cloud.google.com/apis/credentials/oauthclient",
-                wait_until="domcontentloaded"
+                "https://console.cloud.google.com/apis/credentials/oauthclient", wait_until="domcontentloaded"
             )
             await page.wait_for_timeout(2000)
 
@@ -220,16 +215,17 @@ async def run_google_setup_agent(project_name: str = "gru-assistant") -> dict:
             client_secret = None
 
             # Look for the credentials in the page
-            client_id_el = await page.query_selector('[data-client-id]')
+            client_id_el = await page.query_selector("[data-client-id]")
             if client_id_el:
-                client_id = await client_id_el.get_attribute('data-client-id')
+                client_id = await client_id_el.get_attribute("data-client-id")
 
             # Try to find credentials in text
             page_text = await page.content()
 
             import re
-            id_match = re.search(r'(\d+-[a-z0-9]+\.apps\.googleusercontent\.com)', page_text)
-            secret_match = re.search(r'(GOCSPX-[a-zA-Z0-9_-]+)', page_text)
+
+            id_match = re.search(r"(\d+-[a-z0-9]+\.apps\.googleusercontent\.com)", page_text)
+            secret_match = re.search(r"(GOCSPX-[a-zA-Z0-9_-]+)", page_text)
 
             if id_match:
                 client_id = id_match.group(1)
@@ -273,7 +269,7 @@ async def run_google_setup_agent(project_name: str = "gru-assistant") -> dict:
                 logger.info("Completing OAuth flow...")
                 from google_auth_oauthlib.flow import InstalledAppFlow
 
-                SCOPES = [
+                scopes = [
                     "https://www.googleapis.com/auth/calendar.readonly",
                     "https://www.googleapis.com/auth/gmail.readonly",
                     "https://www.googleapis.com/auth/gmail.send",
@@ -283,9 +279,7 @@ async def run_google_setup_agent(project_name: str = "gru-assistant") -> dict:
                 ]
 
                 flow = InstalledAppFlow.from_client_secrets_file(
-                    str(credentials_path),
-                    SCOPES,
-                    redirect_uri="urn:ietf:wg:oauth:2.0:oob"
+                    str(credentials_path), scopes, redirect_uri="urn:ietf:wg:oauth:2.0:oob"
                 )
                 auth_url, _ = flow.authorization_url(prompt="consent")
 
@@ -311,7 +305,7 @@ async def run_google_setup_agent(project_name: str = "gru-assistant") -> dict:
 
                 # Extract the auth code from the page
                 auth_code = None
-                code_el = await page.query_selector('input[readonly]')
+                code_el = await page.query_selector("input[readonly]")
                 if code_el:
                     auth_code = await code_el.input_value()
 
@@ -320,7 +314,7 @@ async def run_google_setup_agent(project_name: str = "gru-assistant") -> dict:
                     if "code=" in page.url:
                         auth_code = page.url.split("code=")[1].split("&")[0]
                     else:
-                        textarea = await page.query_selector('textarea')
+                        textarea = await page.query_selector("textarea")
                         if textarea:
                             auth_code = await textarea.input_value()
 
@@ -334,7 +328,9 @@ async def run_google_setup_agent(project_name: str = "gru-assistant") -> dict:
                     results["message"] = "Google setup complete! Calendar, Gmail, and Docs are now connected."
                 else:
                     results["status"] = "partial"
-                    results["message"] = "Created credentials but couldn't complete OAuth. You may need to authorize manually."
+                    results["message"] = (
+                        "Created credentials but couldn't complete OAuth. You may need to authorize manually."
+                    )
             else:
                 results["status"] = "partial"
                 results["message"] = "Couldn't extract credentials. Check the browser window."

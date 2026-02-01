@@ -78,9 +78,7 @@ class Database:
             return
 
         # Check if memory_facts table exists
-        cursor = await self._conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='memory_facts'"
-        )
+        cursor = await self._conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='memory_facts'")
         if not await cursor.fetchone():
             await self._conn.execute("""
                 CREATE TABLE IF NOT EXISTS memory_facts (

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,7 +11,6 @@ from gru.intent import (
     Intent,
     IntentClassifier,
     parse_time_expression,
-    MEAL_TIMES,
 )
 
 
@@ -185,12 +184,14 @@ class TestIntentEnrichment:
     def mock_memory(self):
         """Create mock memory store."""
         memory = MagicMock()
-        memory.get_user_profile = AsyncMock(return_value={
-            "preferences": {
-                "location": "San Francisco, CA",
-                "food": "spicy",
+        memory.get_user_profile = AsyncMock(
+            return_value={
+                "preferences": {
+                    "location": "San Francisco, CA",
+                    "food": "spicy",
+                }
             }
-        })
+        )
         return memory
 
     @pytest.fixture
@@ -241,15 +242,15 @@ class TestIntentEnrichment:
         )
 
         # Calendar event from 12:00-13:00
-        calendar_events = [{
-            "summary": "Team Meeting",
-            "start_time": "2024-01-15T12:00:00",
-            "end_time": "2024-01-15T13:00:00",
-        }]
+        calendar_events = [
+            {
+                "summary": "Team Meeting",
+                "start_time": "2024-01-15T12:00:00",
+                "end_time": "2024-01-15T13:00:00",
+            }
+        ]
 
-        enriched = await classifier_with_memory.enrich_intent(
-            intent, "user1", calendar_events
-        )
+        enriched = await classifier_with_memory.enrich_intent(intent, "user1", calendar_events)
 
         # Should be rescheduled to after the meeting
         assert enriched.schedule_for > target_time

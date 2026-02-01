@@ -64,9 +64,11 @@ async def list_issues(include_fixed: bool = False) -> dict[str, Any]:
     }
 
 
-async def analyze_error(error_message: str, traceback: str | None = None, file_path: str | None = None) -> dict[str, Any]:
+async def analyze_error(
+    error_message: str, traceback: str | None = None, file_path: str | None = None
+) -> dict[str, Any]:
     """Analyze an error and attempt to fix it."""
-    from gru.self_heal import get_self_heal_engine, IssueCategory
+    from gru.self_heal import IssueCategory, get_self_heal_engine
 
     engine = get_self_heal_engine()
 

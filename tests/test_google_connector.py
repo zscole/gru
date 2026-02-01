@@ -6,7 +6,7 @@ import json
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -41,6 +41,7 @@ async def db():
 @pytest.fixture
 def mock_config(temp_dir):
     """Create a mock config."""
+
     class MockConfig:
         data_dir = temp_dir
         memory_enabled = True
@@ -118,9 +119,7 @@ class TestGoogleCalendarSync:
                 {
                     "id": "event1",
                     "summary": "Team Meeting",
-                    "start": {
-                        "dateTime": (datetime.utcnow() + timedelta(hours=2)).isoformat() + "Z"
-                    },
+                    "start": {"dateTime": (datetime.utcnow() + timedelta(hours=2)).isoformat() + "Z"},
                     "attendees": [
                         {"email": "alice@example.com"},
                         {"email": "bob@example.com"},
@@ -176,9 +175,7 @@ class TestGmailSync:
         mock_service = MagicMock()
 
         # Mock list response
-        mock_service.users().messages().list().execute.return_value = {
-            "messages": [{"id": "msg1"}]
-        }
+        mock_service.users().messages().list().execute.return_value = {"messages": [{"id": "msg1"}]}
 
         # Mock get response for the message
         mock_service.users().messages().get().execute.return_value = {
@@ -208,9 +205,7 @@ class TestGmailSync:
         """Test that low-importance emails don't create observations."""
         mock_service = MagicMock()
 
-        mock_service.users().messages().list().execute.return_value = {
-            "messages": [{"id": "msg1"}]
-        }
+        mock_service.users().messages().list().execute.return_value = {"messages": [{"id": "msg1"}]}
 
         # No IMPORTANT or STARRED label
         mock_service.users().messages().get().execute.return_value = {
@@ -249,15 +244,12 @@ class TestSetupGoogleTriggers:
     async def test_triggers_are_idempotent(self, proactive_engine, google_connector):
         """Test that running setup twice doesn't duplicate triggers."""
         await setup_google_triggers(proactive_engine, google_connector)
-        count1 = len(await proactive_engine.list_triggers())
+        len(await proactive_engine.list_triggers())
 
         await setup_google_triggers(proactive_engine, google_connector)
-        count2 = len(await proactive_engine.list_triggers())
+        len(await proactive_engine.list_triggers())
 
         # Should have same number (no duplicates)
         # Note: may include default triggers too
-        google_triggers = [
-            t for t in await proactive_engine.list_triggers()
-            if t["name"].startswith("google_")
-        ]
+        google_triggers = [t for t in await proactive_engine.list_triggers() if t["name"].startswith("google_")]
         assert len(google_triggers) == 2

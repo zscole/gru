@@ -2,22 +2,18 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from gru.setup import (
+    ConfigManager,
+    KeyType,
+    SetupWizard,
     detect_key_type,
     detect_multiple_keys,
-    ConfigManager,
-    SetupWizard,
-    KeyType,
-    KEY_TYPE_NAMES,
-    get_config_manager,
-    get_setup_wizard,
     parse_config_from_message,
 )
 
@@ -57,8 +53,8 @@ class TestKeyDetection:
 
     def test_detect_discord_token(self):
         """Test detecting Discord bot token."""
-        # Fake token that matches format but uses invalid base64 user ID
-        key = "AAAAAAAAAAAAAAAAAAAAAA.AAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        # Fake token that matches format (24.6.27+ chars)
+        key = "AAAAAAAAAAAAAAAAAAAAAAAA.AAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAA"
         assert detect_key_type(key) == KeyType.DISCORD
 
     def test_detect_slack_bot_token(self):

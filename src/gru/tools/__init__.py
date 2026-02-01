@@ -30,20 +30,20 @@ def initialize_tools() -> ToolRegistry:
         return get_registry()
 
     # Register tools from each module
-    from gru.tools.maps import register_maps_tools
-    from gru.tools.search import register_search_tools
-    from gru.tools.memory import register_memory_tools
-    from gru.tools.browse import register_browse_tools
-    from gru.tools.provision import register_provision_tools
-    from gru.tools.google import register_google_tools
-    from gru.tools.slack import register_slack_tools
-    from gru.tools.proactive import register_proactive_tools
-    from gru.tools.orchestrator import register_orchestrator_tools
-    from gru.tools.voice import register_voice_tools
-    from gru.tools.research import register_research_tools
-    from gru.tools.knowledge import register_knowledge_tools
     from gru.tools.actions import register_action_tools
+    from gru.tools.browse import register_browse_tools
+    from gru.tools.google import register_google_tools
+    from gru.tools.knowledge import register_knowledge_tools
+    from gru.tools.maps import register_maps_tools
+    from gru.tools.memory import register_memory_tools
+    from gru.tools.orchestrator import register_orchestrator_tools
+    from gru.tools.proactive import register_proactive_tools
+    from gru.tools.provision import register_provision_tools
+    from gru.tools.research import register_research_tools
+    from gru.tools.search import register_search_tools
     from gru.tools.self_heal import register_self_heal_tools
+    from gru.tools.slack import register_slack_tools
+    from gru.tools.voice import register_voice_tools
 
     register_maps_tools()
     register_search_tools()

@@ -2,13 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
-import sys
-from datetime import datetime, timedelta
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from gru.actions.base import (
     Action,
@@ -49,11 +43,7 @@ class TestActionResult:
 
     def test_confirm_required(self):
         """Test confirmation required result."""
-        result = ActionResult.confirm_required(
-            "Confirm order",
-            {"total": "$25.00"},
-            "order_123"
-        )
+        result = ActionResult.confirm_required("Confirm order", {"total": "$25.00"}, "order_123")
         assert result.status == ActionStatus.NEEDS_CONFIRM
         assert result.needs_user_input is True
         assert result.confirmation_required["details"]["total"] == "$25.00"
@@ -211,6 +201,7 @@ class TestAction:
 
     async def test_action_run_success(self):
         """Test running an action successfully."""
+
         class SimpleAction(Action):
             name = "simple"
             description = "Simple action"
@@ -228,6 +219,7 @@ class TestAction:
 
     async def test_action_validation(self):
         """Test parameter validation."""
+
         class ValidatedAction(Action):
             name = "validated"
             description = "Validated action"
@@ -255,6 +247,7 @@ class TestAction:
 
     async def test_action_pre_execute_hook(self):
         """Test pre-execute hook."""
+
         class HookedAction(Action):
             name = "hooked"
             description = "Hooked action"
@@ -281,6 +274,7 @@ class TestAction:
 
     async def test_action_post_execute_hook(self):
         """Test post-execute hook."""
+
         class HookedAction(Action):
             name = "hooked"
             description = "Hooked action"
@@ -301,6 +295,7 @@ class TestAction:
 
     async def test_action_exception_handling(self):
         """Test that exceptions are caught."""
+
         class FailingAction(Action):
             name = "failing"
             description = "Failing action"
@@ -318,6 +313,7 @@ class TestAction:
 
     async def test_action_cancellation(self):
         """Test action cancellation."""
+
         class CancellableAction(Action):
             name = "cancellable"
             description = "Cancellable action"

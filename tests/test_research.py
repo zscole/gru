@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -70,9 +70,7 @@ class TestResearchIntentPatterns:
 
     async def test_classify_scheduled_research(self, classifier):
         """Test 'by morning' scheduled research."""
-        intent = await classifier.classify(
-            "by morning, i'd like a thorough report on consumer AI products"
-        )
+        intent = await classifier.classify("by morning, i'd like a thorough report on consumer AI products")
 
         assert intent.category == "research_scheduled"
         assert intent.action == "research"
@@ -139,9 +137,7 @@ class TestResearchAction:
     def mock_claude(self):
         """Create mock Claude for research."""
         claude = MagicMock()
-        claude.send_message = AsyncMock(return_value=MagicMock(
-            content="Query 1\nQuery 2\nQuery 3"
-        ))
+        claude.send_message = AsyncMock(return_value=MagicMock(content="Query 1\nQuery 2\nQuery 3"))
         return claude
 
     async def test_research_validates_topic(self):
@@ -191,10 +187,12 @@ class TestResearchIntegration:
         """Create mock Claude client."""
         claude = MagicMock()
         # Mock query generation
-        claude.send_message = AsyncMock(side_effect=[
-            MagicMock(content="AI assistants 2024\nBest AI tools\nAI comparison"),
-            MagicMock(content="# Research Report\n\nThis is the report content."),
-        ])
+        claude.send_message = AsyncMock(
+            side_effect=[
+                MagicMock(content="AI assistants 2024\nBest AI tools\nAI comparison"),
+                MagicMock(content="# Research Report\n\nThis is the report content."),
+            ]
+        )
         return claude
 
     async def test_research_generates_queries(self, mock_claude):
@@ -204,9 +202,7 @@ class TestResearchIntegration:
         set_research_claude(mock_claude)
         action = ResearchAction()
 
-        queries = await action._generate_search_queries(
-            mock_claude, "AI assistants", "moderate"
-        )
+        queries = await action._generate_search_queries(mock_claude, "AI assistants", "moderate")
 
         assert len(queries) > 0
         assert "AI assistants" in queries[0] or any("AI" in q for q in queries)
@@ -223,9 +219,7 @@ class TestResearchIntegration:
             {"title": "Top Tools", "url": "https://example.com/tools", "snippet": "Best tools list"},
         ]
 
-        report = await action._synthesize_report(
-            mock_claude, "AI assistants", sources, "report", "moderate"
-        )
+        report = await action._synthesize_report(mock_claude, "AI assistants", sources, "report", "moderate")
 
         assert "Research Report" in report
         assert len(report) > 100

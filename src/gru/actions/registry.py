@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from gru.actions.base import Action, ActionContext, ActionResult
 
 if TYPE_CHECKING:
-    from gru.actions.browser import Browser
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +66,15 @@ class ActionRegistry:
         for name, action_class in self._actions.items():
             if category and action_class.category != category:
                 continue
-            actions.append({
-                "name": name,
-                "description": action_class.description,
-                "category": action_class.category,
-                "requires_auth": action_class.requires_auth,
-                "requires_confirmation": action_class.requires_confirmation,
-            })
+            actions.append(
+                {
+                    "name": name,
+                    "description": action_class.description,
+                    "category": action_class.category,
+                    "requires_auth": action_class.requires_auth,
+                    "requires_confirmation": action_class.requires_confirmation,
+                }
+            )
         return actions
 
     def list_categories(self) -> list[str]:
@@ -121,34 +123,34 @@ def get_registry() -> ActionRegistry:
 def _register_default_actions(registry: ActionRegistry) -> None:
     """Register default actions."""
     # Import and register service actions
-    from gru.actions.services.web import (
-        NavigateAction,
-        ClickAction,
-        TypeAction,
-        ExtractAction,
-        ScreenshotAction,
-        WaitAction,
-    )
-    from gru.actions.services.search import (
-        WebSearchAction,
-        LocalSearchAction,
-        DistanceAction,
-        RestaurantSearchAction,
-    )
-    from gru.actions.services.ubereats import (
-        UberEatsSearchAction,
-        UberEatsOrderAction,
-        UberEatsCartAction,
-    )
     from gru.actions.services.google import (
-        CreateDocumentAction,
-        WriteDocumentAction,
-        SendEmailAction,
         CompileDocumentAction,
+        CreateDocumentAction,
+        SendEmailAction,
+        WriteDocumentAction,
     )
     from gru.actions.services.research import (
-        ResearchAction,
         QuickAnswerAction,
+        ResearchAction,
+    )
+    from gru.actions.services.search import (
+        DistanceAction,
+        LocalSearchAction,
+        RestaurantSearchAction,
+        WebSearchAction,
+    )
+    from gru.actions.services.ubereats import (
+        UberEatsCartAction,
+        UberEatsOrderAction,
+        UberEatsSearchAction,
+    )
+    from gru.actions.services.web import (
+        ClickAction,
+        ExtractAction,
+        NavigateAction,
+        ScreenshotAction,
+        TypeAction,
+        WaitAction,
     )
 
     # Web actions

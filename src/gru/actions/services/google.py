@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from gru.actions.base import Action, ActionContext, ActionResult
 
@@ -46,9 +46,7 @@ class CreateDocumentAction(Action):
 
         connector = get_google_connector()
         if not connector:
-            return ActionResult.error_result(
-                "Google connector not configured. Run 'gru google login' first."
-            )
+            return ActionResult.error_result("Google connector not configured. Run 'gru google login' first.")
 
         if not connector.is_authenticated():
             return ActionResult.auth_required("google", None)
@@ -62,7 +60,7 @@ class CreateDocumentAction(Action):
                     "document_id": result["document_id"],
                     "url": result["url"],
                     "title": result["title"],
-                }
+                },
             )
 
         except Exception as e:
@@ -91,9 +89,7 @@ class WriteDocumentAction(Action):
 
         connector = get_google_connector()
         if not connector:
-            return ActionResult.error_result(
-                "Google connector not configured. Run 'gru google login' first."
-            )
+            return ActionResult.error_result("Google connector not configured. Run 'gru google login' first.")
 
         if not connector.is_authenticated():
             return ActionResult.auth_required("google", None)
@@ -109,7 +105,7 @@ class WriteDocumentAction(Action):
                     "document_id": document_id,
                     "url": doc_url,
                     "chars_written": len(content),
-                }
+                },
             )
 
         except Exception as e:
@@ -142,9 +138,7 @@ class SendEmailAction(Action):
 
         connector = get_google_connector()
         if not connector:
-            return ActionResult.error_result(
-                "Google connector not configured. Run 'gru google login' first."
-            )
+            return ActionResult.error_result("Google connector not configured. Run 'gru google login' first.")
 
         if not connector.is_authenticated():
             return ActionResult.auth_required("google", None)
@@ -158,7 +152,7 @@ class SendEmailAction(Action):
                     "message_id": result["message_id"],
                     "to": to,
                     "subject": subject,
-                }
+                },
             )
 
         except Exception as e:
@@ -189,9 +183,7 @@ class CompileDocumentAction(Action):
 
         connector = get_google_connector()
         if not connector:
-            return ActionResult.error_result(
-                "Google connector not configured. Run 'gru google login' first."
-            )
+            return ActionResult.error_result("Google connector not configured. Run 'gru google login' first.")
 
         if not connector.is_authenticated():
             return ActionResult.auth_required("google", None)

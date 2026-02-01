@@ -31,6 +31,7 @@ async def db():
 @pytest.fixture
 def mock_config():
     """Create a mock config."""
+
     class MockConfig:
         data_dir = Path(tempfile.mkdtemp())
         memory_enabled = True

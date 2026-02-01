@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import Any
 
 from gru.actions.autonomous import (
@@ -70,7 +69,7 @@ class OpenTableReservationHandler(ActionHandler):
         except ImportError:
             return ActionResult(
                 success=False,
-                message="Playwright not installed. Run: pip install playwright && playwright install chromium"
+                message="Playwright not installed. Run: pip install playwright && playwright install chromium",
             )
 
         restaurant = params["restaurant"]
@@ -149,8 +148,7 @@ class OpenTableReservationHandler(ActionHandler):
     async def undo(self, params: dict[str, Any], undo_data: dict[str, Any]) -> ActionResult:
         """Cancel a reservation."""
         return ActionResult(
-            success=False,
-            message="Please cancel the reservation manually via OpenTable app or website."
+            success=False, message="Please cancel the reservation manually via OpenTable app or website."
         )
 
 
@@ -208,13 +206,13 @@ class ResyReservationHandler(ActionHandler):
         except ImportError:
             return ActionResult(
                 success=False,
-                message="Playwright not installed. Run: pip install playwright && playwright install chromium"
+                message="Playwright not installed. Run: pip install playwright && playwright install chromium",
             )
 
         restaurant = params["restaurant"]
         date = params["date"]
         time = params["time"]
-        party_size = params["party_size"]
+        params["party_size"]
         city = params.get("city", "san-francisco")
 
         try:
@@ -288,7 +286,4 @@ class ResyReservationHandler(ActionHandler):
             return ActionResult(success=False, message=f"Reservation failed: {e}")
 
     async def undo(self, params: dict[str, Any], undo_data: dict[str, Any]) -> ActionResult:
-        return ActionResult(
-            success=False,
-            message="Please cancel via the Resy app or website."
-        )
+        return ActionResult(success=False, message="Please cancel via the Resy app or website.")

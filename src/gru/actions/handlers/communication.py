@@ -96,10 +96,7 @@ class SendEmailHandler(ActionHandler):
             # Encode and send
             raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
 
-            result = _google_connector._gmail_service.users().messages().send(
-                userId="me",
-                body={"raw": raw}
-            ).execute()
+            result = _google_connector._gmail_service.users().messages().send(userId="me", body={"raw": raw}).execute()
 
             return ActionResult(
                 success=True,
@@ -218,6 +215,7 @@ class SendSMSHandler(ActionHandler):
             return False, "Message required"
         # Check for Twilio credentials in environment
         import os
+
         if not os.environ.get("TWILIO_ACCOUNT_SID"):
             return False, "Twilio not configured. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN."
         return True, ""

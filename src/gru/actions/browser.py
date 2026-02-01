@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -14,10 +13,13 @@ _playwright_available = False
 try:
     from playwright.async_api import (
         Browser as PlaywrightBrowser,
+    )
+    from playwright.async_api import (
         BrowserContext,
         Page,
         async_playwright,
     )
+
     _playwright_available = True
 except ImportError:
     PlaywrightBrowser = Any
@@ -237,9 +239,10 @@ class Browser:
         page = await self.new_page(context_name)
         try:
             return await callback(page)
-        except Exception as e:
+        except Exception:
             if screenshot_on_error:
                 import time
+
                 await self.screenshot(page, f"error_{int(time.time())}")
             raise
         finally:

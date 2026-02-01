@@ -99,9 +99,7 @@ class GoogleConnector:
 
         if not creds or not creds.valid:
             try:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    str(self.credentials_path), SCOPES
-                )
+                flow = InstalledAppFlow.from_client_secrets_file(str(self.credentials_path), SCOPES)
                 if headless:
                     # For headless/remote environments
                     creds = flow.run_console()
@@ -163,24 +161,27 @@ class GoogleConnector:
         Returns:
             List of events found
         """
-        if not self._calendar_service:
-            if not self.load_token():
-                logger.warning("Not authenticated with Google")
-                return []
+        if not self._calendar_service and not self.load_token():
+            logger.warning("Not authenticated with Google")
+            return []
 
         now = datetime.utcnow()
         time_min = now.isoformat() + "Z"
         time_max = (now + timedelta(hours=hours_ahead)).isoformat() + "Z"
 
         try:
-            events_result = self._calendar_service.events().list(
-                calendarId="primary",
-                timeMin=time_min,
-                timeMax=time_max,
-                maxResults=20,
-                singleEvents=True,
-                orderBy="startTime",
-            ).execute()
+            events_result = (
+                self._calendar_service.events()
+                .list(
+                    calendarId="primary",
+                    timeMin=time_min,
+                    timeMax=time_max,
+                    maxResults=20,
+                    singleEvents=True,
+                    orderBy="startTime",
+                )
+                .execute()
+            )
 
             events = events_result.get("items", [])
             new_events = []
@@ -271,10 +272,9 @@ class GoogleConnector:
         Returns:
             List of emails found
         """
-        if not self._gmail_service:
-            if not self.load_token():
-                logger.warning("Not authenticated with Google")
-                return []
+        if not self._gmail_service and not self.load_token():
+            logger.warning("Not authenticated with Google")
+            return []
 
         try:
             # Build query
@@ -282,11 +282,16 @@ class GoogleConnector:
             if important_only:
                 query += " is:important"
 
-            results = self._gmail_service.users().messages().list(
-                userId="me",
-                q=query,
-                maxResults=max_results,
-            ).execute()
+            results = (
+                self._gmail_service.users()
+                .messages()
+                .list(
+                    userId="me",
+                    q=query,
+                    maxResults=max_results,
+                )
+                .execute()
+            )
 
             messages = results.get("messages", [])
             new_emails = []
@@ -300,12 +305,17 @@ class GoogleConnector:
 
                 # Fetch full message
                 try:
-                    msg = self._gmail_service.users().messages().get(
-                        userId="me",
-                        id=msg_id,
-                        format="metadata",
-                        metadataHeaders=["From", "Subject", "Date"],
-                    ).execute()
+                    msg = (
+                        self._gmail_service.users()
+                        .messages()
+                        .get(
+                            userId="me",
+                            id=msg_id,
+                            format="metadata",
+                            metadataHeaders=["From", "Subject", "Date"],
+                        )
+                        .execute()
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to fetch email {msg_id}: {e}")
                     continue
@@ -394,15 +404,12 @@ class GoogleConnector:
         Returns:
             Dict with document ID, title, and URL
         """
-        if not self._docs_service:
-            if not self.load_token():
-                raise RuntimeError("Not authenticated with Google")
+        if not self._docs_service and not self.load_token():
+            raise RuntimeError("Not authenticated with Google")
 
         try:
             # Create the document
-            doc = self._docs_service.documents().create(
-                body={"title": title}
-            ).execute()
+            doc = self._docs_service.documents().create(body={"title": title}).execute()
 
             doc_id = doc.get("documentId")
             doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
@@ -439,15 +446,12 @@ class GoogleConnector:
         Returns:
             True if successful
         """
-        if not self._docs_service:
-            if not self.load_token():
-                raise RuntimeError("Not authenticated with Google")
+        if not self._docs_service and not self.load_token():
+            raise RuntimeError("Not authenticated with Google")
 
         try:
             # Get current document to find end index
-            doc = self._docs_service.documents().get(
-                documentId=document_id
-            ).execute()
+            doc = self._docs_service.documents().get(documentId=document_id).execute()
 
             # Find insertion index
             if insert_at_end:
@@ -467,10 +471,7 @@ class GoogleConnector:
                 }
             ]
 
-            self._docs_service.documents().batchUpdate(
-                documentId=document_id,
-                body={"requests": requests}
-            ).execute()
+            self._docs_service.documents().batchUpdate(documentId=document_id, body={"requests": requests}).execute()
 
             logger.info(f"Wrote {len(content)} chars to doc {document_id}")
             return True
@@ -497,9 +498,8 @@ class GoogleConnector:
         Returns:
             Dict with message ID and thread ID
         """
-        if not self._gmail_service:
-            if not self.load_token():
-                raise RuntimeError("Not authenticated with Google")
+        if not self._gmail_service and not self.load_token():
+            raise RuntimeError("Not authenticated with Google")
 
         import base64
         from email.mime.text import MIMEText
@@ -515,10 +515,7 @@ class GoogleConnector:
             raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
 
             # Send
-            result = self._gmail_service.users().messages().send(
-                userId="me",
-                body={"raw": raw}
-            ).execute()
+            result = self._gmail_service.users().messages().send(userId="me", body={"raw": raw}).execute()
 
             logger.info(f"Sent email to {to}: {subject}")
 
@@ -535,9 +532,8 @@ class GoogleConnector:
 
     async def get_user_email(self) -> str | None:
         """Get the authenticated user's email address."""
-        if not self._gmail_service:
-            if not self.load_token():
-                return None
+        if not self._gmail_service and not self.load_token():
+            return None
 
         try:
             profile = self._gmail_service.users().getProfile(userId="me").execute()

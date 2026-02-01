@@ -32,6 +32,7 @@ def _get_connector():
 
     # Fallback: try to load from disk
     from gru.connectors.slack import SlackConnector
+
     data_dir = Path.home() / ".gru"
     fallback = SlackConnector(data_dir)
     if fallback.load_token():
@@ -57,11 +58,13 @@ async def get_slack_dms(limit: int = 10) -> dict:
         results = []
         for dm in dms:
             sender = await connector.get_user_name(dm.get("from_user", ""))
-            results.append({
-                "from": sender,
-                "text": dm.get("text", ""),
-                "timestamp": dm.get("ts"),
-            })
+            results.append(
+                {
+                    "from": sender,
+                    "text": dm.get("text", ""),
+                    "timestamp": dm.get("ts"),
+                }
+            )
 
         return {
             "messages": results,
@@ -90,12 +93,14 @@ async def get_slack_mentions(hours_back: int = 24, limit: int = 10) -> dict:
         results = []
         for m in mentions:
             sender = await connector.get_user_name(m.get("from_user", ""))
-            results.append({
-                "from": sender,
-                "text": m.get("text", ""),
-                "channel": m.get("channel"),
-                "timestamp": m.get("ts"),
-            })
+            results.append(
+                {
+                    "from": sender,
+                    "text": m.get("text", ""),
+                    "channel": m.get("channel"),
+                    "timestamp": m.get("ts"),
+                }
+            )
 
         return {
             "messages": results,
@@ -109,9 +114,7 @@ async def get_slack_mentions(hours_back: int = 24, limit: int = 10) -> dict:
         return {"error": str(e)}
 
 
-async def get_slack_channel_messages(
-    channel_name: str, hours_back: int = 24, limit: int = 20
-) -> dict:
+async def get_slack_channel_messages(channel_name: str, hours_back: int = 24, limit: int = 20) -> dict:
     """Get recent messages from a specific Slack channel."""
     connector = _get_connector()
 
@@ -131,11 +134,13 @@ async def get_slack_channel_messages(
         results = []
         for msg in messages:
             sender = await connector.get_user_name(msg.get("from_user", ""))
-            results.append({
-                "from": sender,
-                "text": msg.get("text", ""),
-                "timestamp": msg.get("ts"),
-            })
+            results.append(
+                {
+                    "from": sender,
+                    "text": msg.get("text", ""),
+                    "timestamp": msg.get("ts"),
+                }
+            )
 
         return {
             "messages": results,
@@ -152,6 +157,7 @@ async def get_slack_channel_messages(
 async def setup_slack(user_token: str) -> dict:
     """Set up Slack integration with a user token."""
     from gru.connectors.slack import SlackConnector
+
     data_dir = Path.home() / ".gru"
     data_dir.mkdir(exist_ok=True)
 
@@ -217,6 +223,7 @@ async def auto_setup_slack() -> dict:
         # Reload the connector with new token
         global _connector
         from gru.connectors.slack import SlackConnector
+
         data_dir = Path.home() / "gru" / "data"
         if not data_dir.exists():
             data_dir = Path.home() / ".gru"

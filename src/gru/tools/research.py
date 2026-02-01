@@ -11,8 +11,8 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
@@ -41,12 +41,11 @@ def set_research_dependencies(config: Any, orchestrator: Orchestrator) -> None:
 async def _fetch_json(url: str, headers: dict | None = None) -> dict | list | None:
     """Fetch JSON from URL."""
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=30) as resp:
-                if resp.status == 200:
-                    return await resp.json()
-                logger.warning(f"HTTP {resp.status} fetching {url}")
-                return None
+        async with aiohttp.ClientSession() as session, session.get(url, headers=headers, timeout=30) as resp:
+            if resp.status == 200:
+                return await resp.json()
+            logger.warning(f"HTTP {resp.status} fetching {url}")
+            return None
     except Exception as e:
         logger.error(f"Error fetching {url}: {e}")
         return None
@@ -72,8 +71,9 @@ async def _fetch_html(url: str, headers: dict | None = None) -> str | None:
         return None
 
 
-async def fetch_x_ai(accounts: str = "kaboroevich,_akhaliq,AndrewYNg,ylaboratory,EMostaque",
-                     limit: int = 20) -> dict[str, Any]:
+async def fetch_x_ai(
+    accounts: str = "kaboroevich,_akhaliq,AndrewYNg,ylaboratory,EMostaque", limit: int = 20
+) -> dict[str, Any]:
     """Fetch AI-related posts from X/Twitter via Nitter instances.
 
     Args:
@@ -117,18 +117,20 @@ async def fetch_x_ai(accounts: str = "kaboroevich,_akhaliq,AndrewYNg,ylaboratory
                 time_pattern = r'<span class="tweet-date"[^>]*><a[^>]*title="([^"]*)"'
                 times = re.findall(time_pattern, html)
 
-                for i, tweet in enumerate(tweets[:limit // len(accounts.split(",")) + 1]):
+                for i, tweet in enumerate(tweets[: limit // len(accounts.split(",")) + 1]):
                     # Clean HTML tags
-                    clean_text = re.sub(r'<[^>]+>', '', tweet).strip()
+                    clean_text = re.sub(r"<[^>]+>", "", tweet).strip()
 
                     if clean_text and len(clean_text) > 20:  # Skip very short tweets
-                        results.append({
-                            "source": f"x/@{account}",
-                            "content": clean_text[:500],
-                            "url": f"https://x.com{links[i]}" if i < len(links) else f"https://x.com/{account}",
-                            "timestamp": times[i] if i < len(times) else "",
-                            "author": account,
-                        })
+                        results.append(
+                            {
+                                "source": f"x/@{account}",
+                                "content": clean_text[:500],
+                                "url": f"https://x.com{links[i]}" if i < len(links) else f"https://x.com/{account}",
+                                "timestamp": times[i] if i < len(times) else "",
+                                "author": account,
+                            }
+                        )
 
                 break  # Success with this instance, move to next account
 
@@ -159,30 +161,34 @@ async def fetch_huggingface_trending(limit: int = 20) -> dict[str, Any]:
     models = await _fetch_json(models_url)
 
     if models:
-        for model in models[:limit // 2]:
-            results.append({
-                "source": "huggingface/models",
-                "name": model.get("id", ""),
-                "url": f"https://huggingface.co/{model.get('id', '')}",
-                "downloads": model.get("downloads", 0),
-                "likes": model.get("likes", 0),
-                "tags": model.get("tags", [])[:5],
-                "pipeline_tag": model.get("pipeline_tag", ""),
-            })
+        for model in models[: limit // 2]:
+            results.append(
+                {
+                    "source": "huggingface/models",
+                    "name": model.get("id", ""),
+                    "url": f"https://huggingface.co/{model.get('id', '')}",
+                    "downloads": model.get("downloads", 0),
+                    "likes": model.get("likes", 0),
+                    "tags": model.get("tags", [])[:5],
+                    "pipeline_tag": model.get("pipeline_tag", ""),
+                }
+            )
 
     # Fetch trending spaces
     spaces_url = "https://huggingface.co/api/spaces?sort=trending&limit=" + str(limit)
     spaces = await _fetch_json(spaces_url)
 
     if spaces:
-        for space in spaces[:limit // 2]:
-            results.append({
-                "source": "huggingface/spaces",
-                "name": space.get("id", ""),
-                "url": f"https://huggingface.co/spaces/{space.get('id', '')}",
-                "likes": space.get("likes", 0),
-                "sdk": space.get("sdk", ""),
-            })
+        for space in spaces[: limit // 2]:
+            results.append(
+                {
+                    "source": "huggingface/spaces",
+                    "name": space.get("id", ""),
+                    "url": f"https://huggingface.co/spaces/{space.get('id', '')}",
+                    "likes": space.get("likes", 0),
+                    "sdk": space.get("sdk", ""),
+                }
+            )
 
     return {
         "items": results,
@@ -226,12 +232,14 @@ async def fetch_producthunt_ai(limit: int = 15) -> dict[str, Any]:
                 unique_links.append(link)
 
         for i in range(min(limit, len(names))):
-            results.append({
-                "source": "producthunt",
-                "name": names[i] if i < len(names) else "",
-                "tagline": taglines[i] if i < len(taglines) else "",
-                "url": f"https://www.producthunt.com{unique_links[i]}" if i < len(unique_links) else "",
-            })
+            results.append(
+                {
+                    "source": "producthunt",
+                    "name": names[i] if i < len(names) else "",
+                    "tagline": taglines[i] if i < len(taglines) else "",
+                    "url": f"https://www.producthunt.com{unique_links[i]}" if i < len(unique_links) else "",
+                }
+            )
 
     return {
         "products": results,
@@ -268,7 +276,7 @@ async def fetch_tech_news(limit: int = 20) -> dict[str, Any]:
             # Parse RSS items
             items = xml.split("<item>")[1:]  # Skip content before first item
 
-            for item in items[:limit // len(feeds) + 1]:
+            for item in items[: limit // len(feeds) + 1]:
                 # Extract title
                 title_match = re.search(r"<title>(?:<!\[CDATA\[)?([^<\]]+)(?:\]\]>)?</title>", item)
                 title = title_match.group(1).strip() if title_match else ""
@@ -289,19 +297,33 @@ async def fetch_tech_news(limit: int = 20) -> dict[str, Any]:
 
                 if title and link:
                     # Filter for AI relevance
-                    ai_keywords = ["ai", "gpt", "llm", "openai", "anthropic", "claude", "gemini",
-                                   "machine learning", "neural", "model", "chatbot", "artificial intelligence"]
+                    ai_keywords = [
+                        "ai",
+                        "gpt",
+                        "llm",
+                        "openai",
+                        "anthropic",
+                        "claude",
+                        "gemini",
+                        "machine learning",
+                        "neural",
+                        "model",
+                        "chatbot",
+                        "artificial intelligence",
+                    ]
                     title_lower = title.lower()
                     is_ai = any(kw in title_lower for kw in ai_keywords)
 
                     if is_ai or "AI" in title:
-                        results.append({
-                            "source": feed_name,
-                            "title": title,
-                            "url": link,
-                            "published": pub_date,
-                            "summary": description,
-                        })
+                        results.append(
+                            {
+                                "source": feed_name,
+                                "title": title,
+                                "url": link,
+                                "published": pub_date,
+                                "summary": description,
+                            }
+                        )
 
         except Exception as e:
             logger.debug(f"Failed to fetch {feed_name}: {e}")
@@ -349,12 +371,14 @@ async def fetch_ai_newsletters() -> dict[str, Any]:
                 pub_date = date_match.group(1).strip() if date_match else ""
 
                 if title and link:
-                    results.append({
-                        "source": name,
-                        "title": title,
-                        "url": link,
-                        "published": pub_date,
-                    })
+                    results.append(
+                        {
+                            "source": name,
+                            "title": title,
+                            "url": link,
+                            "published": pub_date,
+                        }
+                    )
 
         except Exception as e:
             logger.debug(f"Failed to fetch newsletter {name}: {e}")
@@ -368,9 +392,9 @@ async def fetch_ai_newsletters() -> dict[str, Any]:
     }
 
 
-async def fetch_reddit_ai(subreddits: str = "MachineLearning,LocalLLaMA,artificial,singularity",
-                          limit: int = 25,
-                          timeframe: str = "day") -> dict[str, Any]:
+async def fetch_reddit_ai(
+    subreddits: str = "MachineLearning,LocalLLaMA,artificial,singularity", limit: int = 25, timeframe: str = "day"
+) -> dict[str, Any]:
     """Fetch top posts from AI-related subreddits.
 
     Args:
@@ -390,17 +414,19 @@ async def fetch_reddit_ai(subreddits: str = "MachineLearning,LocalLLaMA,artifici
         if data and "data" in data and "children" in data["data"]:
             for post in data["data"]["children"]:
                 p = post["data"]
-                results.append({
-                    "source": f"reddit/r/{subreddit}",
-                    "title": p.get("title", ""),
-                    "url": f"https://reddit.com{p.get('permalink', '')}",
-                    "score": p.get("score", 0),
-                    "comments": p.get("num_comments", 0),
-                    "created": datetime.fromtimestamp(p.get("created_utc", 0)).isoformat(),
-                    "author": p.get("author", ""),
-                    "selftext": p.get("selftext", "")[:500] if p.get("selftext") else None,
-                    "external_url": p.get("url") if not p.get("is_self") else None,
-                })
+                results.append(
+                    {
+                        "source": f"reddit/r/{subreddit}",
+                        "title": p.get("title", ""),
+                        "url": f"https://reddit.com{p.get('permalink', '')}",
+                        "score": p.get("score", 0),
+                        "comments": p.get("num_comments", 0),
+                        "created": datetime.fromtimestamp(p.get("created_utc", 0)).isoformat(),
+                        "author": p.get("author", ""),
+                        "selftext": p.get("selftext", "")[:500] if p.get("selftext") else None,
+                        "external_url": p.get("url") if not p.get("is_self") else None,
+                    }
+                )
 
         # Rate limit
         await asyncio.sleep(1)
@@ -409,7 +435,7 @@ async def fetch_reddit_ai(subreddits: str = "MachineLearning,LocalLLaMA,artifici
     results.sort(key=lambda x: x["score"], reverse=True)
 
     return {
-        "posts": results[:limit * 2],  # Return top posts across all subreddits
+        "posts": results[: limit * 2],  # Return top posts across all subreddits
         "count": len(results),
         "subreddits": subreddits,
         "timeframe": timeframe,
@@ -444,18 +470,20 @@ async def fetch_github_trending(language: str = "", since: str = "daily") -> dic
     results = []
     if data and "items" in data:
         for repo in data["items"]:
-            results.append({
-                "source": "github",
-                "name": repo.get("full_name", ""),
-                "url": repo.get("html_url", ""),
-                "description": repo.get("description", ""),
-                "stars": repo.get("stargazers_count", 0),
-                "forks": repo.get("forks_count", 0),
-                "language": repo.get("language", ""),
-                "created": repo.get("created_at", ""),
-                "updated": repo.get("updated_at", ""),
-                "topics": repo.get("topics", []),
-            })
+            results.append(
+                {
+                    "source": "github",
+                    "name": repo.get("full_name", ""),
+                    "url": repo.get("html_url", ""),
+                    "description": repo.get("description", ""),
+                    "stars": repo.get("stargazers_count", 0),
+                    "forks": repo.get("forks_count", 0),
+                    "language": repo.get("language", ""),
+                    "created": repo.get("created_at", ""),
+                    "updated": repo.get("updated_at", ""),
+                    "topics": repo.get("topics", []),
+                }
+            )
 
     return {
         "repositories": results,
@@ -480,9 +508,27 @@ async def fetch_hackernews_top(limit: int = 30, min_score: int = 50) -> dict[str
         return {"stories": [], "count": 0, "error": "Failed to fetch story IDs"}
 
     results = []
-    ai_keywords = ["ai", "gpt", "llm", "claude", "openai", "anthropic", "machine learning",
-                   "neural", "transformer", "diffusion", "model", "agent", "langchain",
-                   "embedding", "vector", "rag", "fine-tune", "lora", "inference"]
+    ai_keywords = [
+        "ai",
+        "gpt",
+        "llm",
+        "claude",
+        "openai",
+        "anthropic",
+        "machine learning",
+        "neural",
+        "transformer",
+        "diffusion",
+        "model",
+        "agent",
+        "langchain",
+        "embedding",
+        "vector",
+        "rag",
+        "fine-tune",
+        "lora",
+        "inference",
+    ]
 
     for story_id in story_ids[:100]:  # Check more than limit to filter
         story_url = f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json"
@@ -496,17 +542,19 @@ async def fetch_hackernews_top(limit: int = 30, min_score: int = 50) -> dict[str
         is_ai_related = any(kw in title for kw in ai_keywords)
 
         if is_ai_related or story.get("score", 0) > 200:  # High score or AI-related
-            results.append({
-                "source": "hackernews",
-                "title": story.get("title", ""),
-                "url": story.get("url", f"https://news.ycombinator.com/item?id={story_id}"),
-                "hn_url": f"https://news.ycombinator.com/item?id={story_id}",
-                "score": story.get("score", 0),
-                "comments": story.get("descendants", 0),
-                "author": story.get("by", ""),
-                "created": datetime.fromtimestamp(story.get("time", 0)).isoformat(),
-                "is_ai_related": is_ai_related,
-            })
+            results.append(
+                {
+                    "source": "hackernews",
+                    "title": story.get("title", ""),
+                    "url": story.get("url", f"https://news.ycombinator.com/item?id={story_id}"),
+                    "hn_url": f"https://news.ycombinator.com/item?id={story_id}",
+                    "score": story.get("score", 0),
+                    "comments": story.get("descendants", 0),
+                    "author": story.get("by", ""),
+                    "created": datetime.fromtimestamp(story.get("time", 0)).isoformat(),
+                    "is_ai_related": is_ai_related,
+                }
+            )
 
         if len(results) >= limit:
             break
@@ -521,8 +569,7 @@ async def fetch_hackernews_top(limit: int = 30, min_score: int = 50) -> dict[str
     }
 
 
-async def fetch_arxiv_ai(query: str = "cat:cs.AI OR cat:cs.LG OR cat:cs.CL",
-                         max_results: int = 20) -> dict[str, Any]:
+async def fetch_arxiv_ai(query: str = "cat:cs.AI OR cat:cs.LG OR cat:cs.CL", max_results: int = 20) -> dict[str, Any]:
     """Fetch recent AI papers from ArXiv.
 
     Args:
@@ -544,12 +591,11 @@ async def fetch_arxiv_ai(query: str = "cat:cs.AI OR cat:cs.LG OR cat:cs.CL",
     url = f"{base_url}?{urllib.parse.urlencode(params)}"
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=30) as resp:
-                if resp.status != 200:
-                    return {"papers": [], "error": f"HTTP {resp.status}"}
+        async with aiohttp.ClientSession() as session, session.get(url, timeout=30) as resp:
+            if resp.status != 200:
+                return {"papers": [], "error": f"HTTP {resp.status}"}
 
-                text = await resp.text()
+            text = await resp.text()
     except Exception as e:
         return {"papers": [], "error": str(e)}
 
@@ -562,11 +608,11 @@ async def fetch_arxiv_ai(query: str = "cat:cs.AI OR cat:cs.LG OR cat:cs.CL",
     for entry in entries:
         try:
             # Extract fields with simple string parsing
-            def extract(tag: str) -> str:
-                start = entry.find(f"<{tag}>")
-                end = entry.find(f"</{tag}>")
+            def extract(tag: str, text: str = entry) -> str:
+                start = text.find(f"<{tag}>")
+                end = text.find(f"</{tag}>")
                 if start != -1 and end != -1:
-                    return entry[start + len(tag) + 2:end].strip()
+                    return text[start + len(tag) + 2 : end].strip()
                 return ""
 
             title = extract("title").replace("\n", " ")
@@ -576,7 +622,7 @@ async def fetch_arxiv_ai(query: str = "cat:cs.AI OR cat:cs.LG OR cat:cs.CL",
             link_start = entry.find('href="http://arxiv.org/abs/')
             if link_start != -1:
                 link_end = entry.find('"', link_start + 6)
-                arxiv_url = entry[link_start + 6:link_end]
+                arxiv_url = entry[link_start + 6 : link_end]
             else:
                 arxiv_url = ""
 
@@ -589,13 +635,15 @@ async def fetch_arxiv_ai(query: str = "cat:cs.AI OR cat:cs.LG OR cat:cs.CL",
                     authors.append(name)
 
             if title:
-                results.append({
-                    "source": "arxiv",
-                    "title": title,
-                    "url": arxiv_url,
-                    "summary": summary,
-                    "authors": authors[:5],  # Limit authors
-                })
+                results.append(
+                    {
+                        "source": "arxiv",
+                        "title": title,
+                        "url": arxiv_url,
+                        "summary": summary,
+                        "authors": authors[:5],  # Limit authors
+                    }
+                )
         except Exception as e:
             logger.debug(f"Error parsing arxiv entry: {e}")
             continue
@@ -624,8 +672,17 @@ async def collect_all_sources() -> dict[str, Any]:
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    source_names = ["reddit", "github", "hackernews", "arxiv", "x_twitter",
-                    "huggingface", "producthunt", "tech_news", "newsletters"]
+    source_names = [
+        "reddit",
+        "github",
+        "hackernews",
+        "arxiv",
+        "x_twitter",
+        "huggingface",
+        "producthunt",
+        "tech_news",
+        "newsletters",
+    ]
 
     collected = {"collected_at": datetime.now().isoformat()}
     for i, name in enumerate(source_names):
@@ -654,8 +711,16 @@ async def collect_all_sources() -> dict[str, Any]:
             count = src.get("count", 0)
             if count == 0:
                 # Try to count items directly
-                for key in ["posts", "repositories", "stories", "papers", "items",
-                            "products", "articles", "newsletters"]:
+                for key in [
+                    "posts",
+                    "repositories",
+                    "stories",
+                    "papers",
+                    "items",
+                    "products",
+                    "articles",
+                    "newsletters",
+                ]:
                     if key in src:
                         count = len(src[key])
                         break
@@ -914,8 +979,7 @@ async def start_daily_research(notify_chat_id: str | None = None) -> dict[str, A
         return {"error": str(e)}
 
 
-async def schedule_daily_research(time: str = "06:00",
-                                   notify_chat_id: str | None = None) -> dict[str, Any]:
+async def schedule_daily_research(time: str = "06:00", notify_chat_id: str | None = None) -> dict[str, Any]:
     """Schedule daily research to run automatically.
 
     Args:
@@ -962,65 +1026,172 @@ async def cancel_daily_research() -> dict[str, Any]:
 
 # Thresholds for "breaking news" detection
 BREAKING_THRESHOLDS = {
-    "reddit_score": 500,        # Reddit post with 500+ upvotes
-    "hn_score": 200,            # HN story with 200+ points
-    "github_stars": 100,        # New repo with 100+ stars in a day
-    "hf_likes": 50,             # HF model/space with 50+ likes
+    "reddit_score": 500,  # Reddit post with 500+ upvotes
+    "hn_score": 200,  # HN story with 200+ points
+    "github_stars": 100,  # New repo with 100+ stars in a day
+    "hf_likes": 50,  # HF model/space with 50+ likes
 }
 
 # Higher thresholds for "groundbreaking" - triggers immediate PoC generation
 GROUNDBREAKING_THRESHOLDS = {
-    "reddit_score": 2000,       # Viral Reddit post
-    "hn_score": 500,            # Top HN story
-    "github_stars": 500,        # Exploding repo
-    "hf_likes": 200,            # Hot model/space
+    "reddit_score": 2000,  # Viral Reddit post
+    "hn_score": 500,  # Top HN story
+    "github_stars": 500,  # Exploding repo
+    "hf_likes": 200,  # Hot model/space
 }
 
 # Keywords that indicate groundbreaking content (in titles)
 GROUNDBREAKING_KEYWORDS = [
-    "breakthrough", "revolutionary", "first ever", "world first",
-    "beats gpt-4", "beats claude", "beats gemini", "surpasses",
-    "open source", "opensource", "released", "announcing",
-    "state-of-the-art", "sota", "new model", "outperforms"
+    "breakthrough",
+    "revolutionary",
+    "first ever",
+    "world first",
+    "beats gpt-4",
+    "beats claude",
+    "beats gemini",
+    "surpasses",
+    "open source",
+    "opensource",
+    "released",
+    "announcing",
+    "state-of-the-art",
+    "sota",
+    "new model",
+    "outperforms",
 ]
 
 # Keywords that indicate BUILDABLE/TECHNICAL content (what we want)
 TECHNICAL_KEYWORDS = [
     # Models and weights
-    "open source", "opensource", "open-source", "weights", "model release",
-    "fine-tune", "finetune", "lora", "qlora", "quantized", "gguf", "ggml",
+    "open source",
+    "opensource",
+    "open-source",
+    "weights",
+    "model release",
+    "fine-tune",
+    "finetune",
+    "lora",
+    "qlora",
+    "quantized",
+    "gguf",
+    "ggml",
     # Frameworks and tools
-    "framework", "library", "sdk", "api", "toolkit", "cli", "package",
-    "pip install", "npm install", "github.com", "huggingface",
+    "framework",
+    "library",
+    "sdk",
+    "api",
+    "toolkit",
+    "cli",
+    "package",
+    "pip install",
+    "npm install",
+    "github.com",
+    "huggingface",
     # Techniques
-    "implementation", "tutorial", "how to", "guide", "code", "demo",
-    "inference", "training", "benchmark", "eval", "dataset",
+    "implementation",
+    "tutorial",
+    "how to",
+    "guide",
+    "code",
+    "demo",
+    "inference",
+    "training",
+    "benchmark",
+    "eval",
+    "dataset",
     # Specific tech
-    "llm", "diffusion", "transformer", "embedding", "vector", "rag",
-    "agent", "langchain", "llamaindex", "vllm", "ollama", "mlx",
-    "whisper", "stable diffusion", "flux", "comfyui",
+    "llm",
+    "diffusion",
+    "transformer",
+    "embedding",
+    "vector",
+    "rag",
+    "agent",
+    "langchain",
+    "llamaindex",
+    "vllm",
+    "ollama",
+    "mlx",
+    "whisper",
+    "stable diffusion",
+    "flux",
+    "comfyui",
     # Actions
-    "released", "launching", "introducing", "announcing", "built",
-    "created", "developed", "open-sourced",
+    "released",
+    "launching",
+    "introducing",
+    "announcing",
+    "built",
+    "created",
+    "developed",
+    "open-sourced",
 ]
 
 # Keywords that indicate NON-TECHNICAL content (filter out)
 NOISE_KEYWORDS = [
     # Corporate drama
-    "lawsuit", "sued", "suing", "legal", "court", "trial",
-    "fired", "layoff", "layoffs", "hiring", "hired", "ceo",
-    "leak", "leaked", "leaking", "whistleblow", "secrets",
-    "acquisition", "acquires", "acquired", "merger", "ipo",
+    "lawsuit",
+    "sued",
+    "suing",
+    "legal",
+    "court",
+    "trial",
+    "fired",
+    "layoff",
+    "layoffs",
+    "hiring",
+    "hired",
+    "ceo",
+    "leak",
+    "leaked",
+    "leaking",
+    "whistleblow",
+    "secrets",
+    "acquisition",
+    "acquires",
+    "acquired",
+    "merger",
+    "ipo",
     # Policy and regulation
-    "regulation", "regulatory", "congress", "senate", "legislation",
-    "bill", "law", "policy", "government", "eu ai act", "executive order",
+    "regulation",
+    "regulatory",
+    "congress",
+    "senate",
+    "legislation",
+    "bill",
+    "law",
+    "policy",
+    "government",
+    "eu ai act",
+    "executive order",
     # Opinion and drama
-    "opinion", "editorial", "controversy", "drama", "beef",
-    "twitter", "tweet", "drama", "fight", "argues", "slams",
-    "warns", "warning", "danger", "risk", "threat", "scary",
+    "opinion",
+    "editorial",
+    "controversy",
+    "drama",
+    "beef",
+    "twitter",
+    "tweet",
+    "drama",
+    "fight",
+    "argues",
+    "slams",
+    "warns",
+    "warning",
+    "danger",
+    "risk",
+    "threat",
+    "scary",
     # Vague hype
-    "could", "might", "may", "possibly", "rumor", "reportedly",
-    "sources say", "allegedly", "speculation",
+    "could",
+    "might",
+    "may",
+    "possibly",
+    "rumor",
+    "reportedly",
+    "sources say",
+    "allegedly",
+    "speculation",
 ]
 
 # Track what we've already notified about (to avoid duplicates)
@@ -1035,9 +1206,28 @@ POC_HISTORY_FILE = RESEARCH_DIR / "poc_history.txt"
 def _normalize_topic(title: str) -> set[str]:
     """Extract normalized keywords from a title for deduplication."""
     import re
+
     # Remove common words and extract key terms
-    stopwords = {'the', 'a', 'an', 'is', 'are', 'for', 'to', 'of', 'and', 'or', 'in', 'on', 'with', 'ai', 'poc', 'new', 'first'}
-    words = re.findall(r'\b[a-z]{3,}\b', title.lower())
+    stopwords = {
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "for",
+        "to",
+        "of",
+        "and",
+        "or",
+        "in",
+        "on",
+        "with",
+        "ai",
+        "poc",
+        "new",
+        "first",
+    }
+    words = re.findall(r"\b[a-z]{3,}\b", title.lower())
     return {w for w in words if w not in stopwords}
 
 
@@ -1054,7 +1244,7 @@ def _is_similar_topic(title: str, threshold: float = 0.5) -> bool:
         if not existing_keywords:
             continue
         # Check overlap ratio
-        existing_set = set(existing_keywords.split(','))
+        existing_set = set(existing_keywords.split(","))
         overlap = len(title_keywords & existing_set)
         max_size = max(len(title_keywords), len(existing_set))
         if max_size > 0 and overlap / max_size >= threshold:
@@ -1069,11 +1259,11 @@ def _load_poc_history() -> list[str]:
         lines = POC_HISTORY_FILE.read_text().strip().split("\n")
         # Also populate topics set from history
         for line in lines:
-            if '|' in line:
-                title = line.split('|')[0].strip()
+            if "|" in line:
+                title = line.split("|")[0].strip()
                 keywords = _normalize_topic(title)
                 if keywords:
-                    _poc_topics.add(','.join(sorted(keywords)))
+                    _poc_topics.add(",".join(sorted(keywords)))
         return lines
     return []
 
@@ -1088,7 +1278,7 @@ def _save_poc_to_history(title: str, url: str) -> None:
     # Also add to in-memory topic tracking
     keywords = _normalize_topic(title)
     if keywords:
-        _poc_topics.add(','.join(sorted(keywords)))
+        _poc_topics.add(",".join(sorted(keywords)))
 
 
 def save_poc_from_report(report: str) -> bool:
@@ -1100,20 +1290,20 @@ def save_poc_from_report(report: str) -> bool:
     import re
 
     # Extract GitHub URL from report
-    github_match = re.search(r'https://github\.com/[^\s\)>\]]+', report)
+    github_match = re.search(r"https://github\.com/[^\s\)>\]]+", report)
     if not github_match:
         return False
 
-    github_url = github_match.group(0).rstrip('.,;:')
+    github_url = github_match.group(0).rstrip(".,;:")
 
     # Extract title from TL;DR line or first line
     title = "Unknown PoC"
-    tldr_match = re.search(r'TL;DR:\s*(.+?)(?:\n|$)', report)
+    tldr_match = re.search(r"TL;DR:\s*(.+?)(?:\n|$)", report)
     if tldr_match:
         title = tldr_match.group(1).strip()[:100]
     else:
         # Fallback: use repo name from URL
-        repo_match = re.search(r'github\.com/[^/]+/([^/\s]+)', github_url)
+        repo_match = re.search(r"github\.com/[^/]+/([^/\s]+)", github_url)
         if repo_match:
             title = repo_match.group(1)
 
@@ -1213,17 +1403,19 @@ async def _check_for_breaking_news(collected: dict) -> list[dict]:
         stars = repo.get("stars", 0)
         item_id = f"github:{repo.get('url', '')}"
         if stars >= BREAKING_THRESHOLDS["github_stars"] and item_id not in _notified_items:
-            breaking.append({
-                "source": "GitHub",
-                "type": "trending_repo",
-                "title": repo.get("name", ""),
-                "description": repo.get("description", "")[:200],
-                "url": repo.get("url", ""),
-                "stars": stars,
-                "language": repo.get("language", ""),
-                "topics": repo.get("topics", []),
-                "why": f"Trending repo with {stars} stars",
-            })
+            breaking.append(
+                {
+                    "source": "GitHub",
+                    "type": "trending_repo",
+                    "title": repo.get("name", ""),
+                    "description": repo.get("description", "")[:200],
+                    "url": repo.get("url", ""),
+                    "stars": stars,
+                    "language": repo.get("language", ""),
+                    "topics": repo.get("topics", []),
+                    "why": f"Trending repo with {stars} stars",
+                }
+            )
             _notified_items.add(item_id)
 
     # Check Hugging Face - models/spaces are inherently buildable
@@ -1232,15 +1424,17 @@ async def _check_for_breaking_news(collected: dict) -> list[dict]:
         likes = item.get("likes", 0)
         item_id = f"hf:{item.get('url', '')}"
         if likes >= BREAKING_THRESHOLDS["hf_likes"] and item_id not in _notified_items:
-            breaking.append({
-                "source": "HuggingFace",
-                "type": "trending_model",
-                "title": item.get("name", ""),
-                "url": item.get("url", ""),
-                "likes": likes,
-                "pipeline_tag": item.get("pipeline_tag", ""),
-                "why": f"Trending on HuggingFace with {likes} likes",
-            })
+            breaking.append(
+                {
+                    "source": "HuggingFace",
+                    "type": "trending_model",
+                    "title": item.get("name", ""),
+                    "url": item.get("url", ""),
+                    "likes": likes,
+                    "pipeline_tag": item.get("pipeline_tag", ""),
+                    "why": f"Trending on HuggingFace with {likes} likes",
+                }
+            )
             _notified_items.add(item_id)
 
     # Check for ArXiv papers - only those with code/implementations
@@ -1253,21 +1447,27 @@ async def _check_for_breaking_news(collected: dict) -> list[dict]:
         if item_id not in _notified_items:
             # Only include papers that mention code, github, implementation, etc.
             text = (title + " " + summary).lower()
-            has_code = any(kw in text for kw in ["github", "code", "implementation", "released", "open source", "weights"])
-            has_breakthrough = any(kw in text for kw in ["state-of-the-art", "sota", "outperforms", "beats", "surpasses"])
+            has_code = any(
+                kw in text for kw in ["github", "code", "implementation", "released", "open source", "weights"]
+            )
+            has_breakthrough = any(
+                kw in text for kw in ["state-of-the-art", "sota", "outperforms", "beats", "surpasses"]
+            )
 
             if has_code or has_breakthrough:
                 # Double-check it's not noise
                 if not any(kw in text for kw in NOISE_KEYWORDS):
-                    breaking.append({
-                        "source": "ArXiv",
-                        "type": "paper_with_code",
-                        "title": title,
-                        "description": summary[:300],
-                        "url": paper.get("url", ""),
-                        "authors": paper.get("authors", [])[:3],
-                        "why": "Paper with code/implementation" if has_code else "SOTA paper",
-                    })
+                    breaking.append(
+                        {
+                            "source": "ArXiv",
+                            "type": "paper_with_code",
+                            "title": title,
+                            "description": summary[:300],
+                            "url": paper.get("url", ""),
+                            "authors": paper.get("authors", [])[:3],
+                            "why": "Paper with code/implementation" if has_code else "SOTA paper",
+                        }
+                    )
                     _notified_items.add(item_id)
 
     # Skip general tech news - too much noise. Only process if it's about a specific release
@@ -1281,17 +1481,18 @@ async def _check_for_breaking_news(collected: dict) -> list[dict]:
         if item_id not in _notified_items:
             text = (title + " " + summary).lower()
             # Only include actual releases, not announcements or news
-            if any(kw in text for kw in release_keywords):
-                if not any(kw in text for kw in NOISE_KEYWORDS):
-                    breaking.append({
+            if any(kw in text for kw in release_keywords) and not any(kw in text for kw in NOISE_KEYWORDS):
+                breaking.append(
+                    {
                         "source": article.get("source", "Tech News"),
                         "type": "release",
                         "title": title,
                         "description": summary[:200],
                         "url": article.get("url", ""),
                         "why": "New release/tool available",
-                    })
-                    _notified_items.add(item_id)
+                    }
+                )
+                _notified_items.add(item_id)
 
     return breaking
 
@@ -1310,10 +1511,10 @@ def _is_groundbreaking(item: dict) -> bool:
     likes = item.get("likes", 0)
 
     high_engagement = (
-        score >= GROUNDBREAKING_THRESHOLDS.get("reddit_score", 2000) or
-        score >= GROUNDBREAKING_THRESHOLDS.get("hn_score", 500) or
-        stars >= GROUNDBREAKING_THRESHOLDS.get("github_stars", 500) or
-        likes >= GROUNDBREAKING_THRESHOLDS.get("hf_likes", 200)
+        score >= GROUNDBREAKING_THRESHOLDS.get("reddit_score", 2000)
+        or score >= GROUNDBREAKING_THRESHOLDS.get("hn_score", 500)
+        or stars >= GROUNDBREAKING_THRESHOLDS.get("github_stars", 500)
+        or likes >= GROUNDBREAKING_THRESHOLDS.get("hf_likes", 200)
     )
 
     # Groundbreaking if high engagement OR has groundbreaking keywords with decent engagement
@@ -1347,7 +1548,7 @@ async def _generate_groundbreaking_poc(item: dict) -> dict[str, Any]:
     # Add this topic to tracking
     keywords = _normalize_topic(title)
     if keywords:
-        _poc_topics.add(','.join(sorted(keywords)))
+        _poc_topics.add(",".join(sorted(keywords)))
 
     # Get history of previous PoCs to avoid repeats
     poc_history = _get_poc_history_context()
@@ -1363,11 +1564,11 @@ STYLE REQUIREMENTS:
 - Professional output only
 
 ITEM DETAILS:
-- Source: {item.get('source', 'Unknown')}
-- Title: {item.get('title', 'Unknown')}
-- URL: {item.get('url', '')}
-- Context: {item.get('why', 'High engagement')}
-- Details: {item.get('description', '')[:500] if item.get('description') else 'N/A'}
+- Source: {item.get("source", "Unknown")}
+- Title: {item.get("title", "Unknown")}
+- URL: {item.get("url", "")}
+- Context: {item.get("why", "High engagement")}
+- Details: {item.get("description", "")[:500] if item.get("description") else "N/A"}
 
 TASKS:
 1. ANALYZE - What is this? What does it actually do?
@@ -1425,7 +1626,7 @@ You MUST use deliver_report. User only sees what you send via that tool.
         if _orchestrator._notify_callback:
             _orchestrator._notify_callback(
                 "proactive",
-                f"Found something interesting: {item['title']}\n\nLooking into it now, will send you a summary shortly."
+                f"Found something interesting: {item['title']}\n\nLooking into it now, will send you a summary shortly.",
             )
 
         return {
@@ -1497,10 +1698,7 @@ async def check_breaking_news(notify: bool = True) -> dict[str, Any]:
     }
 
 
-async def start_realtime_monitoring(
-    interval_hours: int = 2,
-    notify_chat_id: str | None = None
-) -> dict[str, Any]:
+async def start_realtime_monitoring(interval_hours: int = 2, notify_chat_id: str | None = None) -> dict[str, Any]:
     """Start continuous monitoring for AI news. Checks every few hours and alerts on breaking news.
 
     Args:

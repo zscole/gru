@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import re
 import urllib.parse
-from typing import Any
 
 from gru.actions.base import Action, ActionContext, ActionResult
 
@@ -86,7 +85,7 @@ class LocalSearchAction(Action):
             # Get result cards
             result_elements = await page.query_selector_all("[role='feed'] > div > div > a")
 
-            for i, element in enumerate(result_elements[:num_results]):
+            for _i, element in enumerate(result_elements[:num_results]):
                 try:
                     # Get the aria-label which contains name and rating
                     label = await element.get_attribute("aria-label")
@@ -103,12 +102,14 @@ class LocalSearchAction(Action):
                         if rating_match:
                             rating = float(rating_match.group(1))
 
-                        results.append({
-                            "name": name,
-                            "rating": rating,
-                            "url": href,
-                            "full_label": label,
-                        })
+                        results.append(
+                            {
+                                "name": name,
+                                "rating": rating,
+                                "url": href,
+                                "full_label": label,
+                            }
+                        )
                 except Exception:
                     continue
 
@@ -146,9 +147,7 @@ class DistanceAction(Action):
         origin = params.get("origin") or params.get("location") or context.location
 
         if not origin:
-            return ActionResult.error_result(
-                "I need to know your location to calculate distance. What's your address?"
-            )
+            return ActionResult.error_result("I need to know your location to calculate distance. What's your address?")
 
         # Format origin if it's a dict
         if isinstance(origin, dict) and "address" in origin:
@@ -179,7 +178,7 @@ class DistanceAction(Action):
             for element in route_elements[:3]:
                 try:
                     text = await element.inner_text()
-                    lines = [l.strip() for l in text.split("\n") if l.strip()]
+                    lines = [x.strip() for x in text.split("\n") if x.strip()]
 
                     # Parse duration and distance from the text
                     duration = None
@@ -187,20 +186,20 @@ class DistanceAction(Action):
 
                     for line in lines:
                         # Look for duration (e.g., "15 min", "1 hr 30 min")
-                        if re.search(r"\d+\s*(min|hr|hour)", line, re.I):
-                            if not duration:
-                                duration = line
+                        if re.search(r"\d+\s*(min|hr|hour)", line, re.I) and not duration:
+                            duration = line
                         # Look for distance (e.g., "5.2 mi", "8.4 km")
-                        if re.search(r"[\d.]+\s*(mi|km|miles|kilometers)", line, re.I):
-                            if not distance:
-                                distance = line
+                        if re.search(r"[\d.]+\s*(mi|km|miles|kilometers)", line, re.I) and not distance:
+                            distance = line
 
                     if duration or distance:
-                        results.append({
-                            "duration": duration,
-                            "distance": distance,
-                            "raw": " | ".join(lines[:3]),
-                        })
+                        results.append(
+                            {
+                                "duration": duration,
+                                "distance": distance,
+                                "raw": " | ".join(lines[:3]),
+                            }
+                        )
                 except Exception:
                     continue
 
@@ -210,9 +209,7 @@ class DistanceAction(Action):
             routes = await context.browser.run_with_page(get_distance)
 
             if not routes:
-                return ActionResult.error_result(
-                    f"Could not find directions from {origin} to {destination}"
-                )
+                return ActionResult.error_result(f"Could not find directions from {origin} to {destination}")
 
             # Format the best route
             best = routes[0]
@@ -346,13 +343,15 @@ class RestaurantSearchAction(Action):
                     if addr_el:
                         details["address"] = await addr_el.inner_text()
 
-                    results.append({
-                        "name": name,
-                        "rating": rating,
-                        "price_level": price_level,
-                        "url": href,
-                        **details,
-                    })
+                    results.append(
+                        {
+                            "name": name,
+                            "rating": rating,
+                            "price_level": price_level,
+                            "url": href,
+                            **details,
+                        }
+                    )
 
                 except Exception:
                     continue

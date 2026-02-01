@@ -1,28 +1,34 @@
 """Action handlers for autonomous actions."""
 
+from gru.actions.handlers.calendar import (
+    CreateEventHandler,
+    DeleteEventHandler,
+    UpdateEventHandler,
+)
+from gru.actions.handlers.calendar import (
+    set_google_connector as set_cal_google,
+)
 from gru.actions.handlers.communication import (
     SendEmailHandler,
     SendSlackMessageHandler,
     SendSMSHandler,
+)
+from gru.actions.handlers.communication import (
     set_google_connector as set_comm_google,
+)
+from gru.actions.handlers.communication import (
     set_slack_connector as set_comm_slack,
-)
-from gru.actions.handlers.calendar import (
-    CreateEventHandler,
-    UpdateEventHandler,
-    DeleteEventHandler,
-    set_google_connector as set_cal_google,
-)
-from gru.actions.handlers.reservations import (
-    OpenTableReservationHandler,
-    ResyReservationHandler,
 )
 from gru.actions.handlers.payments import (
     VenmoPaymentHandler,
 )
 from gru.actions.handlers.purchases import (
-    DoorDashOrderHandler,
     AmazonOrderHandler,
+    DoorDashOrderHandler,
+)
+from gru.actions.handlers.reservations import (
+    OpenTableReservationHandler,
+    ResyReservationHandler,
 )
 
 

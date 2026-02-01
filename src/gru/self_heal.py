@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import os
 import subprocess
 import sys
 import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -22,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class HealthStatus(Enum):
     """Health status levels."""
+
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     UNHEALTHY = "unhealthy"
@@ -30,6 +28,7 @@ class HealthStatus(Enum):
 
 class IssueCategory(Enum):
     """Categories of detected issues."""
+
     PERFORMANCE = "performance"
     ERROR_RATE = "error_rate"
     MEMORY = "memory"
@@ -42,6 +41,7 @@ class IssueCategory(Enum):
 @dataclass
 class Issue:
     """Represents a detected issue."""
+
     id: str
     category: IssueCategory
     severity: str  # low, medium, high, critical
@@ -57,6 +57,7 @@ class Issue:
 @dataclass
 class DiagnosticResult:
     """Result of a diagnostic check."""
+
     status: HealthStatus
     checks_passed: int
     checks_failed: int
@@ -87,9 +88,7 @@ class SelfHealEngine:
 
         # Keep only last hour of timestamps
         cutoff = datetime.now() - timedelta(hours=1)
-        self._error_timestamps[error_type] = [
-            ts for ts in self._error_timestamps[error_type] if ts > cutoff
-        ]
+        self._error_timestamps[error_type] = [ts for ts in self._error_timestamps[error_type] if ts > cutoff]
 
         # Check for error spike
         recent_count = len(self._error_timestamps[error_type])
@@ -109,12 +108,14 @@ class SelfHealEngine:
 
     def record_performance(self, operation: str, duration_ms: float, tokens: int = 0) -> None:
         """Record performance metrics."""
-        self._performance_samples.append({
-            "operation": operation,
-            "duration_ms": duration_ms,
-            "tokens": tokens,
-            "timestamp": datetime.now(),
-        })
+        self._performance_samples.append(
+            {
+                "operation": operation,
+                "duration_ms": duration_ms,
+                "tokens": tokens,
+                "timestamp": datetime.now(),
+            }
+        )
 
         # Keep only last 1000 samples
         if len(self._performance_samples) > 1000:
@@ -125,7 +126,7 @@ class SelfHealEngine:
             self._create_issue(
                 category=IssueCategory.PERFORMANCE,
                 severity="medium",
-                description=f"Slow operation detected: {operation} took {duration_ms/1000:.1f}s",
+                description=f"Slow operation detected: {operation} took {duration_ms / 1000:.1f}s",
                 context={"operation": operation, "duration_ms": duration_ms},
                 auto_fixable=False,
             )
@@ -140,6 +141,7 @@ class SelfHealEngine:
     ) -> Issue:
         """Create and track an issue."""
         import uuid
+
         issue_id = str(uuid.uuid4())[:8]
 
         issue = Issue(
@@ -168,11 +170,13 @@ class SelfHealEngine:
         try:
             python_version = sys.version_info
             if python_version < (3, 10):
-                issues.append(self._create_issue(
-                    IssueCategory.CONFIGURATION,
-                    "high",
-                    f"Python version {python_version.major}.{python_version.minor} is below recommended 3.10+",
-                ))
+                issues.append(
+                    self._create_issue(
+                        IssueCategory.CONFIGURATION,
+                        "high",
+                        f"Python version {python_version.major}.{python_version.minor} is below recommended 3.10+",
+                    )
+                )
                 checks_failed += 1
             else:
                 checks_passed += 1
@@ -187,12 +191,14 @@ class SelfHealEngine:
                 __import__(package)
                 checks_passed += 1
             except ImportError:
-                issues.append(self._create_issue(
-                    IssueCategory.CONFIGURATION,
-                    "critical",
-                    f"Required package '{package}' not installed",
-                    auto_fixable=True,
-                ))
+                issues.append(
+                    self._create_issue(
+                        IssueCategory.CONFIGURATION,
+                        "critical",
+                        f"Required package '{package}' not installed",
+                        auto_fixable=True,
+                    )
+                )
                 checks_failed += 1
 
         # Check 3: Database connectivity
@@ -202,11 +208,13 @@ class SelfHealEngine:
                     await conn.execute("SELECT 1")
                 checks_passed += 1
             except Exception as e:
-                issues.append(self._create_issue(
-                    IssueCategory.SERVICE_DOWN,
-                    "critical",
-                    f"Database connectivity issue: {e}",
-                ))
+                issues.append(
+                    self._create_issue(
+                        IssueCategory.SERVICE_DOWN,
+                        "critical",
+                        f"Database connectivity issue: {e}",
+                    )
+                )
                 checks_failed += 1
 
         # Check 4: MCP server health
@@ -215,13 +223,15 @@ class SelfHealEngine:
                 health = await self.orchestrator.mcp.health_check()
                 unhealthy = [name for name, status in health.items() if not status]
                 if unhealthy:
-                    issues.append(self._create_issue(
-                        IssueCategory.SERVICE_DOWN,
-                        "high",
-                        f"Unhealthy MCP servers: {', '.join(unhealthy)}",
-                        context={"unhealthy_servers": unhealthy},
-                        auto_fixable=True,
-                    ))
+                    issues.append(
+                        self._create_issue(
+                            IssueCategory.SERVICE_DOWN,
+                            "high",
+                            f"Unhealthy MCP servers: {', '.join(unhealthy)}",
+                            context={"unhealthy_servers": unhealthy},
+                            auto_fixable=True,
+                        )
+                    )
                     checks_failed += 1
                 else:
                     checks_passed += 1
@@ -232,18 +242,21 @@ class SelfHealEngine:
         # Check 5: Memory usage
         try:
             import resource
+
             usage = resource.getrusage(resource.RUSAGE_SELF)
             memory_mb = usage.ru_maxrss / 1024 / 1024  # Convert to MB on macOS
             if sys.platform == "linux":
                 memory_mb = usage.ru_maxrss / 1024  # Already in KB on Linux
 
             if memory_mb > 1024:  # Over 1GB
-                issues.append(self._create_issue(
-                    IssueCategory.MEMORY,
-                    "medium",
-                    f"High memory usage: {memory_mb:.0f}MB",
-                    context={"memory_mb": memory_mb},
-                ))
+                issues.append(
+                    self._create_issue(
+                        IssueCategory.MEMORY,
+                        "medium",
+                        f"High memory usage: {memory_mb:.0f}MB",
+                        context={"memory_mb": memory_mb},
+                    )
+                )
                 recommendations.append("Consider restarting to free memory")
                 checks_failed += 1
             else:
@@ -255,28 +268,29 @@ class SelfHealEngine:
         if self.orchestrator:
             for agent_id, agent in self.orchestrator._agents.items():
                 if agent.is_stuck(5):  # 5 turns without tool calls
-                    issues.append(self._create_issue(
-                        IssueCategory.STUCK_AGENT,
-                        "medium",
-                        f"Agent {agent_id} appears stuck",
-                        context={"agent_id": agent_id, "turns": agent._turns_since_tool},
-                        auto_fixable=True,
-                    ))
+                    issues.append(
+                        self._create_issue(
+                            IssueCategory.STUCK_AGENT,
+                            "medium",
+                            f"Agent {agent_id} appears stuck",
+                            context={"agent_id": agent_id, "turns": agent._turns_since_tool},
+                            auto_fixable=True,
+                        )
+                    )
                     checks_failed += 1
 
         # Check 7: Error rate analysis
-        high_error_types = [
-            error_type for error_type, count in self._error_counts.items()
-            if count > 50
-        ]
+        high_error_types = [error_type for error_type, count in self._error_counts.items() if count > 50]
         if high_error_types:
             for error_type in high_error_types:
-                issues.append(self._create_issue(
-                    IssueCategory.ERROR_RATE,
-                    "high",
-                    f"High error count for {error_type}: {self._error_counts[error_type]}",
-                    auto_fixable=True,
-                ))
+                issues.append(
+                    self._create_issue(
+                        IssueCategory.ERROR_RATE,
+                        "high",
+                        f"High error count for {error_type}: {self._error_counts[error_type]}",
+                        auto_fixable=True,
+                    )
+                )
             checks_failed += 1
         else:
             checks_passed += 1
@@ -284,14 +298,17 @@ class SelfHealEngine:
         # Check 8: Disk space
         try:
             import shutil
+
             total, used, free = shutil.disk_usage("/")
-            free_gb = free / (1024 ** 3)
+            free_gb = free / (1024**3)
             if free_gb < 1:
-                issues.append(self._create_issue(
-                    IssueCategory.CONFIGURATION,
-                    "critical",
-                    f"Low disk space: {free_gb:.1f}GB free",
-                ))
+                issues.append(
+                    self._create_issue(
+                        IssueCategory.CONFIGURATION,
+                        "critical",
+                        f"Low disk space: {free_gb:.1f}GB free",
+                    )
+                )
                 checks_failed += 1
             else:
                 checks_passed += 1
@@ -364,12 +381,14 @@ class SelfHealEngine:
                 details.append(f"[ERROR] {issue.description}: {e}")
                 logger.error(f"Error fixing issue {issue.id}: {e}")
 
-        self._fix_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "fixed": fixed,
-            "failed": failed,
-            "details": details,
-        })
+        self._fix_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "fixed": fixed,
+                "failed": failed,
+                "details": details,
+            }
+        )
 
         return {
             "fixed": fixed,
@@ -396,10 +415,12 @@ class SelfHealEngine:
                 agent = self.orchestrator._agents.get(agent_id)
                 if agent:
                     # Try to unstick by adding a nudge message
-                    agent.messages.append({
-                        "role": "user",
-                        "content": "You appear to be stuck. Please use a tool to make progress, or if the task is complete, provide a final summary.",
-                    })
+                    agent.messages.append(
+                        {
+                            "role": "user",
+                            "content": "You appear to be stuck. Please use a tool to make progress, or if the task is complete, provide a final summary.",
+                        }
+                    )
                     agent._turns_since_tool = 0
                     return True, "Sent nudge message to stuck agent"
                 return False, "Agent not found"

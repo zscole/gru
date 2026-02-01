@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-import tempfile
 from datetime import datetime
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from gru.session import (
-    ESCALATION_PATTERNS,
     PERSONAS,
-    QUICK_ACTION_PATTERNS,
     Persona,
     Session,
     SessionManager,
@@ -35,9 +31,7 @@ def mock_db():
 def mock_claude():
     """Create a mock Claude client."""
     claude = MagicMock()
-    claude.send_message = AsyncMock(
-        return_value=MagicMock(content="Hello! How can I help you today?")
-    )
+    claude.send_message = AsyncMock(return_value=MagicMock(content="Hello! How can I help you today?"))
     return claude
 
 
@@ -280,9 +274,7 @@ class TestEscalationPatterns:
     def test_autonomously_pattern(self, session_manager):
         """Test 'do it autonomously' pattern."""
         persona = PERSONAS["general"]
-        escalate, task = session_manager._check_escalation(
-            "run this autonomously and get back to me", persona
-        )
+        escalate, task = session_manager._check_escalation("run this autonomously and get back to me", persona)
         assert escalate is True
 
     def test_no_escalation_simple(self, session_manager):
@@ -300,9 +292,7 @@ class TestQuickActions:
         """Test reminder pattern detection."""
         session = Session(id="test", user_id="user", channel="cli")
 
-        action = await session_manager._check_quick_action(
-            "remind me to call Mom at 5pm", session
-        )
+        action = await session_manager._check_quick_action("remind me to call Mom at 5pm", session)
 
         assert action is not None
         assert action["type"] == "reminder"
@@ -313,9 +303,7 @@ class TestQuickActions:
         """Test todo pattern detection."""
         session = Session(id="test", user_id="user", channel="cli")
 
-        action = await session_manager._check_quick_action(
-            "add a reminder to buy groceries", session
-        )
+        action = await session_manager._check_quick_action("add a reminder to buy groceries", session)
 
         assert action is not None
         assert action["type"] == "reminder"
@@ -324,9 +312,7 @@ class TestQuickActions:
         """Test calendar query detection."""
         session = Session(id="test", user_id="user", channel="cli")
 
-        action = await session_manager._check_quick_action(
-            "what's on my calendar today?", session
-        )
+        action = await session_manager._check_quick_action("what's on my calendar today?", session)
 
         assert action is not None
         assert action["type"] == "calendar_query"
@@ -335,9 +321,7 @@ class TestQuickActions:
         """Test that regular messages don't trigger quick actions."""
         session = Session(id="test", user_id="user", channel="cli")
 
-        action = await session_manager._check_quick_action(
-            "How are you doing?", session
-        )
+        action = await session_manager._check_quick_action("How are you doing?", session)
 
         assert action is None
 
@@ -359,9 +343,7 @@ class TestChat:
         """Test chat that triggers escalation."""
         mock_db.fetchone.return_value = None
 
-        result = await session_manager.chat(
-            "user1", "cli", "go build me a REST API for user management"
-        )
+        result = await session_manager.chat("user1", "cli", "go build me a REST API for user management")
 
         assert result["escalate"] is True
         assert result["escalate_task"] is not None
@@ -371,9 +353,7 @@ class TestChat:
         """Test chat that triggers quick action."""
         mock_db.fetchone.return_value = None
 
-        result = await session_manager.chat(
-            "user1", "cli", "remind me to submit the report"
-        )
+        result = await session_manager.chat("user1", "cli", "remind me to submit the report")
 
         assert result["quick_action"] is not None
         assert result["escalate"] is False
@@ -424,9 +404,7 @@ class TestSystemPromptBuilding:
 
     async def test_system_prompt_with_memory(self, session_manager, mock_memory, mock_proactive):
         """Test system prompt with memory context."""
-        mock_memory.get_user_profile.return_value = {
-            "preferences": {"language": "Python", "editor": "vim"}
-        }
+        mock_memory.get_user_profile.return_value = {"preferences": {"language": "Python", "editor": "vim"}}
         mock_memory.get_personalized_context.return_value = "User prefers Python for new projects."
 
         session = Session(id="test", user_id="user", channel="cli")
@@ -439,9 +417,7 @@ class TestSystemPromptBuilding:
 
     async def test_system_prompt_with_observations(self, session_manager, mock_memory, mock_proactive):
         """Test system prompt with observation summary."""
-        mock_proactive.get_observation_summary.return_value = (
-            "Pending: Meeting with team at 3pm"
-        )
+        mock_proactive.get_observation_summary.return_value = "Pending: Meeting with team at 3pm"
 
         session = Session(id="test", user_id="user", channel="cli")
         persona = PERSONAS["general"]

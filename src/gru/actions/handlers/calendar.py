@@ -89,10 +89,7 @@ class CreateEventHandler(ActionHandler):
                 return ActionResult(success=False, message=f"Could not parse start time: {start}")
 
             # Calculate end time
-            if end:
-                end_dt = self._parse_datetime(end)
-            else:
-                end_dt = start_dt + timedelta(hours=1)
+            end_dt = self._parse_datetime(end) if end else start_dt + timedelta(hours=1)
 
             # Build event
             event = {
@@ -115,11 +112,15 @@ class CreateEventHandler(ActionHandler):
                 event["attendees"] = [{"email": a} for a in attendees]
 
             # Create event
-            result = _google_connector._calendar_service.events().insert(
-                calendarId="primary",
-                body=event,
-                sendUpdates="all" if attendees else "none",
-            ).execute()
+            result = (
+                _google_connector._calendar_service.events()
+                .insert(
+                    calendarId="primary",
+                    body=event,
+                    sendUpdates="all" if attendees else "none",
+                )
+                .execute()
+            )
 
             return ActionResult(
                 success=True,
@@ -136,6 +137,7 @@ class CreateEventHandler(ActionHandler):
     def _parse_datetime(self, dt_str: str) -> datetime | None:
         """Parse various datetime formats."""
         import re
+
         from dateutil import parser as dateparser
 
         try:
@@ -228,16 +230,17 @@ class UpdateEventHandler(ActionHandler):
             if not event_id and params.get("event_title"):
                 event_id = await self._find_event_by_title(params["event_title"])
                 if not event_id:
-                    return ActionResult(
-                        success=False,
-                        message=f"Could not find event: {params['event_title']}"
-                    )
+                    return ActionResult(success=False, message=f"Could not find event: {params['event_title']}")
 
             # Get current event
-            event = _google_connector._calendar_service.events().get(
-                calendarId="primary",
-                eventId=event_id,
-            ).execute()
+            event = (
+                _google_connector._calendar_service.events()
+                .get(
+                    calendarId="primary",
+                    eventId=event_id,
+                )
+                .execute()
+            )
 
             # Store original for undo
             original = dict(event)
@@ -256,12 +259,16 @@ class UpdateEventHandler(ActionHandler):
                 event["attendees"] = existing
 
             # Update
-            result = _google_connector._calendar_service.events().update(
-                calendarId="primary",
-                eventId=event_id,
-                body=event,
-                sendUpdates="all",
-            ).execute()
+            result = (
+                _google_connector._calendar_service.events()
+                .update(
+                    calendarId="primary",
+                    eventId=event_id,
+                    body=event,
+                    sendUpdates="all",
+                )
+                .execute()
+            )
 
             return ActionResult(
                 success=True,
@@ -279,13 +286,17 @@ class UpdateEventHandler(ActionHandler):
         """Find event ID by title."""
         try:
             now = datetime.utcnow().isoformat() + "Z"
-            results = _google_connector._calendar_service.events().list(
-                calendarId="primary",
-                timeMin=now,
-                maxResults=50,
-                singleEvents=True,
-                q=title,
-            ).execute()
+            results = (
+                _google_connector._calendar_service.events()
+                .list(
+                    calendarId="primary",
+                    timeMin=now,
+                    maxResults=50,
+                    singleEvents=True,
+                    q=title,
+                )
+                .execute()
+            )
 
             events = results.get("items", [])
             for event in events:
@@ -359,10 +370,7 @@ class DeleteEventHandler(ActionHandler):
             if not event_id and params.get("event_title"):
                 event_id = await UpdateEventHandler()._find_event_by_title(params["event_title"])
                 if not event_id:
-                    return ActionResult(
-                        success=False,
-                        message=f"Could not find event: {params['event_title']}"
-                    )
+                    return ActionResult(success=False, message=f"Could not find event: {params['event_title']}")
 
             _google_connector._calendar_service.events().delete(
                 calendarId="primary",
